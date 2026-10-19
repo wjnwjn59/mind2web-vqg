@@ -1,0 +1,31 @@
+# Default configuration for mind2web-vqg.
+# Read with mind2web_vqg.config.load_config() -> cfg.get("model.name")
+
+data:
+  # root directory containing train/, test_task/, ... (default: data/raw/data)
+  root: null
+  splits: ["test_task"]        # split to evaluate: train | test_task | test_website | test_domain
+  max_samples: null            # null = use everything; set a small number for a quick test
+
+model:
+  # prefix api/ or hf/
+  name: "api/gpt-4o-mini"
+  temperature: 0.0
+  max_new_tokens: 256
+
+prompt:
+  file: question_gen.json
+  template: default
+
+output:
+  dir: outputs
+  # result file name -> outputs/<run_name>/
+
+train:
+  # used for fine-tuning (run on the cloud, see README)
+  base_model: "google/flan-t5-base"
+  output_dir: outputs/train
+  epochs: 3
+  batch_size: 8
+  lr: 3.0e-5
+  max_length: 1024

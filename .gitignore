@@ -1,0 +1,48 @@
+# ==== Python ====
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.ipynb_checkpoints/
+
+# ==== Virtual env (uv creates .venv) ====
+.venv/
+venv/
+
+# ==== Tool caches ====
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# ==== Secrets ====
+.env
+
+# ==== Data (must NOT be pushed to GitHub) ====
+# Mind2Web requires: "DO NOT redistribute the unzipped data files online".
+# Ignore all contents while keeping the directory structure (.gitkeep).
+data/**
+!data/**/
+!data/**/.gitkeep
+
+# ==== Output / run results ====
+outputs/**
+!outputs/**/
+!outputs/**/.gitkeep
+wandb/
+runs/
+lightning_logs/
+*.pkl
+*.zip
+
+# ==== Model checkpoints / weights ====
+checkpoints/
+models_cache/
+hf-cache/
+
+# ==== OS / Editor ====
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

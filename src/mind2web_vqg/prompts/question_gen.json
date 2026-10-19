@@ -1,0 +1,9 @@
+{
+  "system": "You are a helpful assistant that asks concise clarifying questions about web pages.",
+  "templates": [
+    {
+      "name": "default",
+      "template": "Task: {task}\n\nPage (cleaned HTML):\n{html}\n\nGenerate one clarifying question about this page to help complete the task.\nQuestion:"
+    }
+  ]
+}

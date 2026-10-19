@@ -1,0 +1,60 @@
+[project]
+name = "mind2web-vqg"
+version = "0.1.0"
+description = "Question generation research on the Mind2Web dataset."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "LeTran", email = "lethanhbaotran.letran@gmail.com" }]
+dependencies = [
+    "datasets>=2.20",
+    "huggingface_hub>=0.24",
+    "pandas>=2.1",
+    "pyyaml>=6.0",
+    "python-dotenv>=1.0",
+    "tqdm>=4.66",
+    "requests>=2.31",
+]
+
+[project.optional-dependencies]
+# uv sync --extra api   -> run the LLM API baseline
+api = ["openai>=1.40"]
+# uv sync --extra local -> run a local model (inference)
+local = [
+    "torch>=2.2",
+    "transformers>=4.44",
+    "accelerate>=0.33",
+]
+# uv sync --extra train -> fine-tune (add when you start training)
+train = [
+    "torch>=2.2",
+    "transformers>=4.44",
+    "accelerate>=0.33",
+    "peft>=0.12",
+    "sentencepiece>=0.2",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
+]
+
+[project.scripts]
+m2w-download = "mind2web_vqg.data.download:main"
+m2w-download-model = "mind2web_vqg.models.download:main"
+m2w-eval = "mind2web_vqg.evaluate:main"
+m2w-train = "mind2web_vqg.train:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mind2web_vqg"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
