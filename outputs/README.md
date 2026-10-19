@@ -8,7 +8,8 @@ Everything produced by eval/train ends up here. The folder is blocked by `.gitig
 ```
 outputs/
 ├── eval_<split>/
-│   └── predictions.json     # written by `uv run m2w-eval`
+│   ├── predictions.json     # written by `uv run m2w-eval`
+│   └── metrics.json         # offline question-quality metrics (see below)
 ├── render_check/<split>/    # written by `uv run m2w-render-html`
 │   ├── <id>_raw.jpg, <id>_cleaned.jpg, <id>_mm.jpg
 │   └── index.html           # side-by-side gallery, open this in a browser
@@ -41,6 +42,22 @@ Note: `input` / `target` / `answer` / `image` come from `data/vqg.py` (via
 `data/prepare.py::build_examples`), which expands each screenshot into one example per
 applicable category.
 
+## What's inside `metrics.json`?
+
+Offline quality metrics for the run (written by `m2w-eval`, recomputable with `m2w-metrics`):
+
+| Key | Meaning |
+| --- | --- |
+| `well_formed_rate` | fraction of predictions that are a real question (ends with `?`, sane length) |
+| `empty_rate` / `mean_words` | empty outputs / average question length |
+| `unique_ratio`, `distinct_1`, `distinct_2`, `self_bleu` | diversity — high self-BLEU means the model emits the same question every time |
+| `rouge_l`, `chrf` | overlap with the reference question (weak signal: the references are templates) |
+| `by_category` | the same numbers per VQG category |
+
+The model-based metric is **round-trip answerability** (`m2w-metrics --round-trip`): ask the
+model the *generated* question against the same screenshot and compare its answer with the
+ground truth, reported next to the ceiling (the same loop with the reference question).
+
 ## What's inside `results.jsonl` (smoke test)?
 
 One line per probe, so you can compute anything later:
@@ -56,7 +73,8 @@ yet, but it is exactly what a later "did the question help?" metric would need.
 
 ## Planned additions
 
-- `outputs/eval_<split>/metrics.json` — BLEU / ROUGE / LLM-as-judge (not implemented yet).
+- LLM-as-judge / human scores (the model-based round-trip answerer already exists:
+  `uv run m2w-metrics --round-trip`).
 - `outputs/train/` — checkpoints once the fine-tuning pipeline exists (the `train.output_dir`
   field in `configs/default.yaml`; `train.py` currently only prints it).
 

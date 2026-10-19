@@ -12,6 +12,7 @@ mind2web_vqg/
 ├── config.py          # YAML -> Config, accessed via cfg.get("model.name")
 ├── cli.py             # ensure_utf8(): fixes UnicodeEncodeError on Windows consoles
 ├── evaluate.py        # eval loop: load -> build_examples -> model.generate -> predictions.json
+├── metrics.py         # question-quality metrics (offline) + round-trip answerability
 ├── smoke_vlm.py       # screenshot -> VLM smoke test (6 probes) -> outputs/smoke_vlm/
 ├── train.py           # fine-tuning skeleton (not implemented)
 │
@@ -35,6 +36,7 @@ evaluate.run_eval
                  │
                  ▼
         outputs/eval_<split>/predictions.json
+        outputs/eval_<split>/metrics.json      # offline metrics (see metrics.py)
 ```
 
 ## How `m2w-vlm-smoke` flows
@@ -97,12 +99,24 @@ No Hydra, just `yaml.safe_load` — simple enough for the current needs.
 `ensure_utf8()` is called at the start of every `main()` so printing Vietnamese text or
 special characters doesn't break on Windows consoles (cp1252).
 
+### `metrics.py`
+
+Quality metrics for one eval run, in two families:
+
+| Family | What | Cost |
+| --- | --- | --- |
+| Offline | format validity, diversity (unique ratio, Distinct-1/2, self-BLEU), ROUGE-L / chrF vs the reference question | free, runs inside `m2w-eval` |
+| Round-trip | ask the model the *generated* question against the same screenshot, compare its answer with the ground truth — plus the *ceiling* (same loop with the reference question) | needs weights |
+
+`m2w-eval` writes the offline part to `metrics.json` automatically; recompute or add the
+round-trip with `uv run m2w-metrics --split <split> [--round-trip]`.
+
 ## Which file should you edit?
 
 | Goal | Edit |
 | --- | --- |
 | Define the VQG task (what's the input, what's the target) | `data/vqg.py` 👈 **most important** (re-exported by `data/prepare.py`) |
-| Add evaluation metrics | `evaluate.py` |
+| Change / add evaluation metrics | `metrics.py` |
 | Add a new model backend | `models/` + `models/__init__.py::build_model` |
 | Change the prompt | `prompts/question_gen.json` / `prompts/__init__.py` |
 | Change the smoke-test probes | `smoke_vlm.py::PROBES` |

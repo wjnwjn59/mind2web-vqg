@@ -59,6 +59,7 @@ m2w-build-vqg = "mind2web_vqg.data.vqg:main"
 m2w-render-html = "mind2web_vqg.data.render_html:main"
 m2w-vlm-smoke = "mind2web_vqg.smoke_vlm:main"
 m2w-eval = "mind2web_vqg.evaluate:main"
+m2w-metrics = "mind2web_vqg.metrics:main"
 m2w-train = "mind2web_vqg.train:main"
 
 [build-system]

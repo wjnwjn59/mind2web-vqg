@@ -55,9 +55,23 @@ These are smoke tests: fast, no data, no API calls, no GPU.
 | `test_default_categories_are_screenshot_grounded` | defaults exclude the task-answered category |
 | `test_questions_and_answers` | the derived question/answer text |
 | `test_field_value_is_opt_in_and_answered_from_task` | `field_value` needs opting in |
-| `test_categories_skipped_when_answer_missing` | no answers -> no examples (stays answerable) |
+| `test_categories_skipped_when_answer_missing` | each category drops only when its own answer is missing |
 | `test_build_examples_ids_and_prompt` / `test_build_examples_can_omit_task` | ids, prompt, `--no-task` |
 | `test_category_stats` / `test_write_examples_round_trip` | counts + `examples.jsonl` round trip |
+| `test_action_repr_label` | `"[link]  Budget Truck -> CLICK"` -> `"Budget Truck"`; non-repr shape -> `""` |
+| `test_label_falls_back_to_the_action_repr` | no attribute text -> the action repr supplies the label |
+| `test_type_and_region_survive_a_missing_label` | `element_type` / `target_region` no longer require a label |
+
+`test_metrics.py` — question-quality metrics (`metrics.py`):
+
+| Test | Checks |
+| --- | --- |
+| `test_normalize` / `test_exact_match_and_containment` / `test_token_f1` | answer comparison for the round-trip |
+| `test_rouge_l` / `test_chrf` | overlap with the reference question |
+| `test_distinct_and_unique` / `test_self_bleu_detects_collapse` | diversity, i.e. mode collapse |
+| `test_is_well_formed` | format validity |
+| `test_compute_metrics_*` | overall + per-category aggregation, empty predictions, empty run |
+| `test_round_trip_*` | stub-model round-trip, image plumbing, and the reference ceiling |
 
 `test_model_download.py` — the weights-download helpers (`models/download.py`):
 

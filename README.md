@@ -269,7 +269,13 @@ skipped, so every emitted example stays answerable.
 uv run m2w-eval --config configs/default.yaml
 ```
 
-Results are written to `outputs/eval_<split>/predictions.json`.
+`m2w-eval` writes `outputs/eval_<split>/predictions.json` plus `metrics.json` with offline
+question-quality metrics (format, diversity, ROUGE-L/chrF vs the reference). Recompute it, or
+add the model-based round-trip answerability metric, with:
+
+```bash
+uv run m2w-metrics --split test_task --round-trip
+```
 
 Select the model in `configs/default.yaml`:
 

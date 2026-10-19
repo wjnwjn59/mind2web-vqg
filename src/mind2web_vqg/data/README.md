@@ -139,7 +139,7 @@ rule from the action metadata — no human or LLM labelling.
 
 | Category | Question is about | Answer from | Default |
 | --- | --- | --- | --- |
-| `target_label` | the text on the element the task needs | `target_text` (screen) | yes |
+| `target_label` | the text on the element the task needs | `target_text` or the action repr (screen) | yes |
 | `element_type` | what kind of UI element it is | tag + input `type` (screen) | yes |
 | `target_region` | where on the page it is | `target_bbox` (screen) | yes |
 | `field_value` | the value to type or select | the task + operation | opt-in |
@@ -152,12 +152,14 @@ uv run m2w-build-vqg  --split test_task --limit 5
 
 Each line is `{id, input, target, answer, image, meta}`: `input` is the generation prompt
 (instruction + the user's task), `target` the reference question and `answer` its ground
-truth. A category whose answer is missing for a row (no label, unmapped tag, off-page box)
-is skipped, so every emitted example is answerable.
+truth. A category is skipped only when *its own* answer is missing (no text, unmapped tag,
+off-page box), so every emitted example stays answerable — `element_type` and `target_region`
+do not require the element to have a text label.
 
 | Function | Purpose |
 | --- | --- |
 | `element_role(example)` | Human word for the element (button, link, search field, ...); `None` if unknown |
+| `action_repr_label(target_action)` | Element text parsed from `target_action_reprs` (`"[link]  Budget Truck -> CLICK"` -> `"Budget Truck"`); label fallback |
 | `relative_region(bbox, source_size=, image_size=)` | Coarse region, e.g. `"top-right"` (rescales DOM -> JPEG) |
 | `generate_questions(example, categories=None)` | Reference questions + answers for one screenshot |
 | `build_examples(examples, categories=None, with_task=True)` | Full VQG set (one row per applicable category) |

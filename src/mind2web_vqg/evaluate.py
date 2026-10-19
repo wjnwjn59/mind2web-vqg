@@ -21,6 +21,7 @@ from pathlib import Path
 from mind2web_vqg.cli import ensure_utf8
 from mind2web_vqg.config import load_config
 from mind2web_vqg.data.prepare import build_examples, load_exported
+from mind2web_vqg.metrics import compute_metrics
 from mind2web_vqg.models import build_model
 from mind2web_vqg.paths import OUTPUT_DIR
 
@@ -62,7 +63,12 @@ def run_eval(
     with open(out_file, "w", encoding="utf-8") as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
 
+    metrics_file = run_dir / "metrics.json"
+    with open(metrics_file, "w", encoding="utf-8") as f:
+        json.dump(compute_metrics(results), f, ensure_ascii=False, indent=2)
+
     print(f"[eval] {len(results)} examples -> {out_file}")
+    print(f"[eval] offline metrics -> {metrics_file}")
     return out_file
 
 
