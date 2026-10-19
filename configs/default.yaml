@@ -2,9 +2,10 @@
 # Read with mind2web_vqg.config.load_config() -> cfg.get("model.name")
 
 data:
-  # root directory containing train/, test_task/, ... (default: data/raw/data)
-  root: null
+  # Eval reads the exported screenshots: data/processed/multimodal/<split>/examples.jsonl
+  # (run `uv run m2w-mm-export` first). `examples` overrides that file path.
   splits: ["test_task"]        # split to evaluate: train | test_task | test_website | test_domain
+  examples: null               # null = data/processed/multimodal/<split>/examples.jsonl
   max_samples: null            # null = use everything; set a small number for a quick test
 
 model:

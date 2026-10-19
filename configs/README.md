@@ -29,10 +29,10 @@ declare every field.
 
 | Group | Field | Read by | Meaning |
 | --- | --- | --- | --- |
-| `data` | `root` | `evaluate.py` | Directory containing `train/`, `test_task/`, ... `null` = `data/raw/data` |
 | `data` | `splits` | `evaluate.py` | List of splits; **only the first element** is used |
+| `data` | `examples` | `evaluate.py` | Override the input `examples.jsonl`; `null` = `$MIND2WEB_DATA_DIR/processed/multimodal/<split>/examples.jsonl` |
 | `data` | `max_samples` | `evaluate.py` | Cap the number of examples for a quick test; `null` = all |
-| `model` | `name` | `evaluate.py` | `api/<model>` or `hf/<repo_id>` (see `src/mind2web_vqg/models/README.md`) |
+| `model` | `name` | `evaluate.py` | `api/`, `hf/` or `vlm/<repo_id>` (see `src/mind2web_vqg/models/README.md`) |
 | `model` | `temperature`, `max_new_tokens` | *(not read yet)* | Declared but `evaluate.py` doesn't pass them to the model |
 | `prompt` | `file`, `template` | *(not read yet)* | The real prompt lives in `src/mind2web_vqg/prompts/` |
 | `output` | `dir` | *(not read yet)* | `evaluate.py` hard-codes `outputs/eval_<split>/` |
