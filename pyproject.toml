@@ -41,6 +41,7 @@ dev = [
 
 [project.scripts]
 m2w-download = "mind2web_vqg.data.download:main"
+m2w-download-mm = "mind2web_vqg.data.download_multimodal:main"
 m2w-download-model = "mind2web_vqg.models.download:main"
 m2w-eval = "mind2web_vqg.evaluate:main"
 m2w-train = "mind2web_vqg.train:main"

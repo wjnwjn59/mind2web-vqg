@@ -91,6 +91,21 @@ mind2web-vqg/
 **Conventions:** code lives in `src/mind2web_vqg/`, data in `data/`, results in `outputs/`,
 and model weights in `hf-cache/`.
 
+### Per-folder docs (start here if you're new to the project)
+
+| Folder | Contents |
+| --- | --- |
+| [`configs/README.md`](configs/README.md) | What each YAML field means, and which fields the code doesn't read yet |
+| [`data/README.md`](data/README.md) | How to download the dataset, folder layout, instance fields |
+| [`src/README.md`](src/README.md) | Why the `src/` layout, list of CLI commands |
+| [`src/mind2web_vqg/README.md`](src/mind2web_vqg/README.md) | Eval flow, `paths`/`config`/`cli`, which file to edit |
+| [`src/mind2web_vqg/data/README.md`](src/mind2web_vqg/data/README.md) | `download` → `load` → `prepare`, plus the screenshot dataset |
+| [`src/mind2web_vqg/models/README.md`](src/mind2web_vqg/models/README.md) | Model interface, API/HF backends, `hf-cache` convention |
+| [`src/mind2web_vqg/prompts/README.md`](src/mind2web_vqg/prompts/README.md) | Prompt templates (note: not wired into eval yet) |
+| [`notebooks/README.md`](notebooks/README.md) | Running Jupyter, snippets for exploring the data |
+| [`tests/README.md`](tests/README.md) | Running pytest, what to test next |
+| [`outputs/README.md`](outputs/README.md) | What's inside `predictions.json` |
+
 ---
 
 ## 4. Downloading the Mind2Web data

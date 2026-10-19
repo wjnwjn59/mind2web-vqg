@@ -25,11 +25,13 @@ venv/
 data/**
 !data/**/
 !data/**/.gitkeep
+!data/README.md
 
 # ==== Output / run results ====
 outputs/**
 !outputs/**/
 !outputs/**/.gitkeep
+!outputs/README.md
 wandb/
 runs/
 lightning_logs/

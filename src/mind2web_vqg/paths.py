@@ -20,6 +20,11 @@ DATA_DIR = Path(os.environ.get("MIND2WEB_DATA_DIR", PROJECT_ROOT / "data"))
 RAW_DIR = DATA_DIR / "raw"
 PROCESSED_DIR = DATA_DIR / "processed"
 
+#: Root of the Multimodal-Mind2Web parquet files (override with MIND2WEB_MM_DIR).
+#: - Local : ./data/multimodal
+#: - Server: /mnt/data/datasets/Multimodal-Mind2Web  (grouped by dataset name)
+MULTIMODAL_DIR = Path(os.environ.get("MIND2WEB_MM_DIR", DATA_DIR / "multimodal"))
+
 #: Where model weights are stored (override with MIND2WEB_HF_CACHE).
 #: - Local : ./hf-cache
 #: - Server: /mnt/data/hf-cache  (folder name <namespace>_<repo_name>)
