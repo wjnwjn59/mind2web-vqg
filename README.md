@@ -277,6 +277,12 @@ add the model-based round-trip answerability metric, with:
 uv run m2w-metrics --split test_task --round-trip
 ```
 
+For a readable view of the same run (metrics tables plus a screenshot gallery):
+
+```bash
+uv run m2w-report --split test_task
+```
+
 Select the model in `configs/default.yaml`:
 
 ```yaml

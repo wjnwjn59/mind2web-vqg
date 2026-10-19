@@ -9,7 +9,9 @@ Everything produced by eval/train ends up here. The folder is blocked by `.gitig
 outputs/
 ├── eval_<split>/
 │   ├── predictions.json     # written by `uv run m2w-eval`
-│   └── metrics.json         # offline question-quality metrics (see below)
+│   ├── metrics.json         # offline question-quality metrics (see below)
+│   ├── report.md            # readable report of the run (`uv run m2w-report`)
+│   └── report.html          # screenshot gallery of the run
 ├── render_check/<split>/    # written by `uv run m2w-render-html`
 │   ├── <id>_raw.jpg, <id>_cleaned.jpg, <id>_mm.jpg
 │   └── index.html           # side-by-side gallery, open this in a browser
@@ -57,6 +59,13 @@ Offline quality metrics for the run (written by `m2w-eval`, recomputable with `m
 The model-based metric is **round-trip answerability** (`m2w-metrics --round-trip`): ask the
 model the *generated* question against the same screenshot and compare its answer with the
 ground truth, reported next to the ceiling (the same loop with the reference question).
+
+## What's inside `report.md` / `report.html`?
+
+`uv run m2w-report --split <split>` turns a run into something you can actually read. The
+markdown version has the metrics tables plus one row per example; the HTML version is a
+gallery where every card shows the screenshot, the reference question, the gold answer and the
+generated question — the fastest way to eyeball whether the model is doing the task.
 
 ## What's inside `results.jsonl` (smoke test)?
 

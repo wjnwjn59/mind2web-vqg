@@ -13,6 +13,7 @@ mind2web_vqg/
 ├── cli.py             # ensure_utf8(): fixes UnicodeEncodeError on Windows consoles
 ├── evaluate.py        # eval loop: load -> build_examples -> model.generate -> predictions.json
 ├── metrics.py         # question-quality metrics (offline) + round-trip answerability
+├── report.py          # readable report of a run: report.md + report.html gallery
 ├── smoke_vlm.py       # screenshot -> VLM smoke test (6 probes) -> outputs/smoke_vlm/
 ├── train.py           # fine-tuning skeleton (not implemented)
 │
@@ -110,6 +111,23 @@ Quality metrics for one eval run, in two families:
 
 `m2w-eval` writes the offline part to `metrics.json` automatically; recompute or add the
 round-trip with `uv run m2w-metrics --split <split> [--round-trip]`.
+
+### `report.py`
+
+`predictions.json` is machine-oriented (nested `meta`, very long prompts). This turns one run
+into two files next to it:
+
+| File | What |
+| --- | --- |
+| `report.md` | metrics tables + one row per example (reference question vs generated question) |
+| `report.html` | a gallery: each screenshot with the reference question/answer and the generated question |
+
+```bash
+uv run m2w-report --split test_task              # writes into outputs/eval_test_task/
+uv run m2w-report --split test_task --limit 50   # only the first 50 examples
+```
+
+Open `report.html` in a browser to review a run visually.
 
 ## Which file should you edit?
 

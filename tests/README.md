@@ -73,6 +73,17 @@ These are smoke tests: fast, no data, no API calls, no GPU.
 | `test_compute_metrics_*` | overall + per-category aggregation, empty predictions, empty run |
 | `test_round_trip_*` | stub-model round-trip, image plumbing, and the reference ceiling |
 
+`test_report.py` — the readable report (`report.py`):
+
+| Test | Checks |
+| --- | --- |
+| `test_markdown_has_summary_metrics_and_samples` | summary line, per-category table, example rows |
+| `test_markdown_respects_the_limit` | `--limit` caps the sample table |
+| `test_markdown_escapes_table_pipes` | `\|` inside a question cannot break the table |
+| `test_html_has_images_and_escapes_markup` | thumbnails wired up, HTML escaped |
+| `test_write_report_creates_both_files` | `report.md` + `report.html` land in the output dir |
+| `test_reports_handle_an_empty_run` | an empty run still produces a valid report |
+
 `test_model_download.py` — the weights-download helpers (`models/download.py`):
 
 | Test | Checks |
