@@ -333,6 +333,23 @@ export MIND2WEB_MM_DIR=/mnt/data/datasets/Multimodal-Mind2Web   # screenshots
 export MIND2WEB_HF_CACHE=/mnt/data/hf-cache            # weights -> /mnt/data/hf-cache
 ```
 
+Make them permanent so every new shell (and every `screen` session) agrees — add them to
+`~/.bashrc`. To check what the current shell will use (do this before any multi-GB download):
+
+```bash
+uv run python -m mind2web_vqg.paths
+# env var -> resolved directory
+#   MIND2WEB_DATA_DIR    set (/mnt/data/datasets/Mind2Web)
+#   ...
+# directory            state     path
+#   raw              exists    /mnt/data/datasets/Mind2Web/raw
+#   multimodal       exists    /mnt/data/datasets/Mind2Web/multimodal
+#   ...
+```
+
+> The download scripts and the readers import these *same* constants, so there is nothing to
+> "register" afterwards: in one shell, download → export → build → eval all agree.
+
 ### Download the data (following the lab convention)
 
 ```bash

@@ -19,6 +19,7 @@ uv run pytest tests/test_smoke.py::test_config_loads
 | `test_version` | `mind2web_vqg.__version__` is non-empty |
 | `test_config_loads` | `configs/default.yaml` loads and has `model.name` |
 | `test_project_root` | `PROJECT_ROOT/pyproject.toml` exists |
+| `test_paths_main_reports_resolved_dirs` | `python -m mind2web_vqg.paths` prints the env vars + resolved dirs |
 
 `test_multimodal.py` — pure helpers of the screenshot pipeline (no parquet, no PIL needed):
 

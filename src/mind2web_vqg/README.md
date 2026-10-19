@@ -73,6 +73,14 @@ All paths are centralized here — **never hard-code paths** elsewhere.
 | `OUTPUT_DIR` | `./outputs` | — |
 | `PROMPT_DIR` | `src/mind2web_vqg/prompts` | — |
 
+Env vars are read **once, at import** (so `.env` alone has no effect — export them in the
+shell). The download scripts and the readers import these same constants, which is what keeps
+a download destination and its read path in sync. Print what the current shell resolves to:
+
+```bash
+uv run python -m mind2web_vqg.paths
+```
+
 ### `config.py`
 
 ```python

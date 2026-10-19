@@ -39,3 +39,35 @@ def ensure_dirs() -> None:
     """Create the required directories if missing (idempotent)."""
     for path in (RAW_DIR, PROCESSED_DIR, OUTPUT_DIR):
         path.mkdir(parents=True, exist_ok=True)
+
+
+def main() -> int:
+    """Print the resolved paths — run this before a multi-GB download.
+
+    ``uv run python -m mind2web_vqg.paths``
+
+    The values below are the *same constants* the download/export/eval code imports, so
+    this is exactly where data will be written and read from in this shell.
+    """
+    overrides = ("MIND2WEB_DATA_DIR", "MIND2WEB_MM_DIR", "MIND2WEB_HF_CACHE")
+    print("env var -> resolved directory")
+    for name in overrides:
+        value = os.environ.get(name)
+        state = f"set ({value})" if value else "unset -> default"
+        print(f"  {name:20s} {state}")
+    print("\ndirectory            state     path")
+    for label, path in (
+        ("raw", RAW_DIR),
+        ("multimodal", MULTIMODAL_DIR),
+        ("processed", PROCESSED_DIR),
+        ("hf-cache", HF_CACHE_DIR),
+    ):
+        state = "exists" if path.exists() else "missing"
+        print(f"  {label:16s} {state:9s} {path}")
+    return 0
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(main())
