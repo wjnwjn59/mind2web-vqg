@@ -93,6 +93,11 @@ def target_element(pos_candidates: list[Any]) -> dict[str, Any]:
     return candidates[0] if candidates else {}
 
 
+def clean_task(value: Any) -> str:
+    """``confirmed_task`` sometimes ships with a stray surrounding quote; strip it."""
+    return str(value or "").strip().strip('"').strip()
+
+
 def image_name(split: str, annotation_id: str, action_index: int) -> str:
     """Filesystem-safe image file name (no directories, no spaces)."""
     safe = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in str(annotation_id))
@@ -114,7 +119,7 @@ def from_row(row: dict[str, Any], *, index: int, split: str) -> dict[str, Any]:
         "split": split,
         "row_index": index,
         "image_name": image_name(split, annotation_id, index),
-        "task": row.get("confirmed_task") or "",
+        "task": clean_task(row.get("confirmed_task")),
         "website": row.get("website"),
         "domain": row.get("domain"),
         "subdomain": row.get("subdomain"),

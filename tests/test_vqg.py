@@ -8,6 +8,7 @@ import pytest
 from mind2web_vqg.data.vqg import (
     ALL_CATEGORIES,
     SCREENSHOT_GROUNDED,
+    action_repr_label,
     build_examples,
     category_stats,
     element_role,
@@ -120,14 +121,51 @@ def test_field_value_is_opt_in_and_answered_from_task() -> None:
 
 
 def test_categories_skipped_when_answer_missing() -> None:
-    # no label -> nothing asks about the element's text/type/region
-    assert generate_questions(example(target_text="")) == []
-    # off-page box -> region dropped, the other two survive
-    cats = {qa["category"] for qa in generate_questions(example(target_bbox=[9999, 0, 1, 1]))}
-    assert cats == {"target_label", "element_type"}
     # unmapped tag -> element_type dropped (its answer would be meaningless)
     cats = {qa["category"] for qa in generate_questions(example(target_tag="div"))}
     assert cats == {"target_label", "target_region"}
+    # off-page box -> region dropped, the other two survive
+    cats = {qa["category"] for qa in generate_questions(example(target_bbox=[9999, 0, 1, 1]))}
+    assert cats == {"target_label", "element_type"}
+    # nothing derivable at all -> no questions
+    nothing = example(
+        target_text="", target_action="CLICK [Search]", target_tag="div", target_bbox=None
+    )
+    assert generate_questions(nothing) == []
+
+
+# --------------------------------------------------------------------------- #
+# labels: attribute text first, action repr as the fallback
+# --------------------------------------------------------------------------- #
+def test_action_repr_label() -> None:
+    assert action_repr_label("[link]  Budget Truck -> CLICK") == "Budget Truck"
+    assert action_repr_label("[select]  Pick-up -> SELECT: 02:30 PM") == "Pick-up"
+    assert action_repr_label("[input]   -> TYPE: 100") == ""  # element has no text
+    assert action_repr_label("CLICK [Search]") == ""  # not the repr shape
+    assert action_repr_label("") == ""
+    assert action_repr_label(None) == ""
+
+
+def test_label_falls_back_to_the_action_repr() -> None:
+    row = example(target_text="", target_action="[link]  Budget Truck -> CLICK")
+    by_cat = {qa["category"]: qa for qa in generate_questions(row)}
+    assert by_cat["target_label"]["answer"] == "Budget Truck"
+
+
+def test_type_and_region_survive_a_missing_label() -> None:
+    # the element has no text anywhere, but we still know its kind and location
+    row = example(target_text="", target_action="[input]   -> TYPE: 100")
+    by_cat = {qa["category"]: qa for qa in generate_questions(row)}
+    assert set(by_cat) == {"element_type", "target_region"}
+    assert by_cat["element_type"]["answer"] == "button"
+    assert by_cat["target_region"]["answer"] == "top-right"
+    # without a label the questions cannot name the element, only describe the step
+    assert by_cat["element_type"]["question"] == (
+        'What kind of UI element does the user need for the task "Search for a red shirt"?'
+    )
+    assert by_cat["target_region"]["question"] == (
+        'In which part of the page is it needed for the task "Search for a red shirt"?'
+    )
 
 
 def test_unknown_category_rejected() -> None:

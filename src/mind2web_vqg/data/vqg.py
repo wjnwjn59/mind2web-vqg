@@ -14,7 +14,8 @@ reference question(s) and their answers:
 
     category        question is about ...          answer comes from
     --------------  -----------------------------  --------------------------------
-    target_label    the element's visible text      ``target_text``   (the screen)
+    target_label    the element's visible text      ``target_text`` or  (the screen)
+                                                    ``target_action``
     element_type    what kind of UI element it is   tag / input type  (the screen)
     target_region   where on the page it sits       bounding box      (the screen)
     field_value     the value to type or select     task + operation  (the task)
@@ -46,6 +47,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from collections import Counter
 from pathlib import Path
@@ -185,8 +187,28 @@ def _task(example: dict[str, Any]) -> str:
     return str(example.get("task") or "").strip()
 
 
+#: Leading ``[tag]`` of a ``target_action_reprs`` string, e.g. ``"[link]  "``.
+_TAG_PREFIX = re.compile(r"^\s*\[[^\]]*\]\s*")
+
+
+def action_repr_label(target_action: Any) -> str:
+    """Text of the target element in ``target_action_reprs``.
+
+    The dataset renders the element as ``"[link]  Budget Truck -> CLICK"``, so the label is
+    the part between the ``[tag]`` prefix and the ``->`` operation. Used when the element's
+    HTML attributes carry no ``text`` — which is the common case, because text content is
+    not an attribute. Returns ``""`` when the string is missing or not in that shape.
+    """
+    text = str(target_action or "").strip()
+    if not _TAG_PREFIX.match(text):
+        return ""
+    return _TAG_PREFIX.sub("", text).rsplit("->", 1)[0].strip()
+
+
 def _label(example: dict[str, Any]) -> str:
-    return str(example.get("target_text") or "").strip()
+    """The element's visible text: the stored attribute text, else the action repr."""
+    label = str(example.get("target_text") or "").strip()
+    return label or action_repr_label(example.get("target_action"))
 
 
 def build_input(example: dict[str, Any], category: str, *, with_task: bool = True) -> str:
@@ -222,11 +244,14 @@ def generate_questions(
         image_size=example.get("image_size"),
     )
 
+    # ``where`` names the step the element is needed for; ``noun`` what to call the element.
+    where = f'the task "{task}"' if task else "this step"
+    noun = role or "element"
+
     out: list[dict[str, str]] = []
     for category in cats:
         if category == "target_label" and label:
-            where = f'the task "{task}"' if task else "this step"
-            noun = role or "element"
+            # Only this category truly needs the text: the text *is* the answer.
             out.append(
                 {
                     "category": category,
@@ -236,21 +261,33 @@ def generate_questions(
                     "answer_type": "text",
                 }
             )
-        elif category == "element_type" and label and role:
+        elif category == "element_type" and role:
+            # The answer is the element kind, so a missing label only changes the wording.
+            question = (
+                f'What kind of UI element is "{label}"?'
+                if label
+                else f"What kind of UI element does the user need for {where}?"
+            )
             out.append(
                 {
                     "category": category,
-                    "question": f'What kind of UI element is "{label}"?',
+                    "question": question,
                     "answer": role,
                     "answer_source": "screenshot",
                     "answer_type": "text",
                 }
             )
-        elif category == "target_region" and label and region:
+        elif category == "target_region" and region:
+            # Same: the answer is the location, not the text.
+            question = (
+                f'In which part of the page is "{label}" located?'
+                if label
+                else f"In which part of the page is it needed for {where}?"
+            )
             out.append(
                 {
                     "category": category,
-                    "question": f'In which part of the page is "{label}" located?',
+                    "question": question,
                     "answer": region,
                     "answer_source": "screenshot",
                     "answer_type": "region",
@@ -258,11 +295,11 @@ def generate_questions(
             )
         elif category == "field_value" and value:
             field = f' the "{label}" field' if label else " the field"
-            where = f' to complete the task "{task}"' if task else ""
+            tail = f' to complete the task "{task}"' if task else ""
             out.append(
                 {
                     "category": category,
-                    "question": f"What value should be entered in{field}{where}?",
+                    "question": f"What value should be entered in{field}{tail}?",
                     "answer": value,
                     "answer_source": "task",
                     "answer_type": "text",

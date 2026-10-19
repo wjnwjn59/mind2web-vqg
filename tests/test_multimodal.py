@@ -4,6 +4,7 @@ import json
 
 from mind2web_vqg.data.multimodal import (
     as_json,
+    clean_task,
     from_row,
     image_name,
     parse_bbox,
@@ -24,6 +25,13 @@ def test_parse_bbox() -> None:
     assert parse_bbox("1,2,3") is None
     assert parse_bbox(None) is None
     assert parse_bbox("a,b,c,d") is None
+
+
+def test_clean_task_strips_the_stray_quote() -> None:
+    # the parquet stores confirmed_task as '"Rent a truck ... April' (leading quote)
+    assert clean_task('"Rent a truck on April') == "Rent a truck on April"
+    assert clean_task("  Search for a red shirt  ") == "Search for a red shirt"
+    assert clean_task(None) == ""
 
 
 def test_target_element_prefers_original_target() -> None:

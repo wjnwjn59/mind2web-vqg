@@ -40,8 +40,13 @@ def run_eval(
     # Screenshots, not the JSON HTML: read what ``m2w-mm-export`` produced.
     exported = load_exported(split, path=cfg.get("data.examples") or None)
     examples = build_examples(exported)
+    built = len(examples)
     if max_samples:
         examples = examples[: int(max_samples)]
+
+    print(f"[eval] {len(exported)} screenshot(s) -> {built} example(s), evaluating {len(examples)}")
+    if not examples:
+        print("[eval] nothing to evaluate — run `uv run m2w-build-vqg` to see why")
 
     model = build_model(model_name or cfg.get("model.name", "api/gpt-4o-mini"))
 
