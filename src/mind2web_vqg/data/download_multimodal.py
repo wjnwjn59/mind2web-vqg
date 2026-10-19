@@ -50,10 +50,10 @@ from pathlib import Path
 from huggingface_hub import snapshot_download
 
 from mind2web_vqg.cli import ensure_utf8
+from mind2web_vqg.data.multimodal import SPLITS
 from mind2web_vqg.paths import MULTIMODAL_DIR
 
 REPO_ID = "osunlp/Multimodal-Mind2Web"
-SPLITS = ("train", "test_task", "test_website", "test_domain")
 
 #: Rough download size per split, in GB (from the Hub file listing).
 SPLIT_SIZE_GB = {

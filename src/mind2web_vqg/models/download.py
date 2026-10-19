@@ -28,12 +28,7 @@ from pathlib import Path
 from huggingface_hub import snapshot_download
 
 from mind2web_vqg.cli import ensure_utf8
-from mind2web_vqg.paths import HF_CACHE_DIR
-
-
-def flatten_repo_id(repo_id: str) -> str:
-    """``<namespace>/<repo_name>`` -> ``<namespace>_<repo_name>``."""
-    return repo_id.replace("/", "_")
+from mind2web_vqg.paths import HF_CACHE_DIR, flatten_repo_id
 
 
 def target_dir(repo_id: str, cache_dir: Path | None = None) -> Path:

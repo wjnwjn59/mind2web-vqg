@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from mind2web_vqg.models.base import QuestionGenerator
-from mind2web_vqg.paths import HF_CACHE_DIR
+from mind2web_vqg.paths import HF_CACHE_DIR, flatten_repo_id
 
 
 def resolve_model_path(model_name: str) -> str:
@@ -15,7 +15,7 @@ def resolve_model_path(model_name: str) -> str:
     """
     if Path(model_name).exists():
         return model_name
-    local = HF_CACHE_DIR / model_name.replace("/", "_")
+    local = HF_CACHE_DIR / flatten_repo_id(model_name)
     return str(local) if local.exists() else model_name
 
 

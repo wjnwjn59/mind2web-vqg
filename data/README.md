@@ -148,14 +148,9 @@ See `src/mind2web_vqg/data/README.md` for the full pipeline.
 
 `m2w-build-vqg` turns every screenshot into up to four answered questions; each output line
 is `{id, input, target, answer, image, meta}` where `input` is the generation prompt,
-`target` the reference question and `answer` its ground truth:
-
-| Category | Question is about | Answer from | Default |
-| --- | --- | --- | --- |
-| `target_label` | the text on the element the task needs | visible text | yes |
-| `element_type` | what kind of UI element it is | tag + input `type` | yes |
-| `target_region` | where on the page it is | bounding box | yes |
-| `field_value` | the value to type/select | the task | opt-in |
+`target` the reference question and `answer` its ground truth. The four categories
+(`target_label`, `element_type`, `target_region` and the opt-in `field_value`) are documented
+once in `src/mind2web_vqg/data/README.md`.
 
 ```bash
 uv run m2w-build-vqg --split test_task --categories target_label target_region

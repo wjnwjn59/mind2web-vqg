@@ -8,6 +8,7 @@ add the metrics that match your task below.
 Usage::
 
     uv run m2w-eval --config configs/default.yaml
+    uv run m2w-eval --model vlm/Qwen/Qwen3.5-9B --max-samples 6
 """
 
 from __future__ import annotations
@@ -24,11 +25,17 @@ from mind2web_vqg.models import build_model
 from mind2web_vqg.paths import OUTPUT_DIR
 
 
-def run_eval(config_path: str | Path | None = None) -> Path:
+def run_eval(
+    config_path: str | Path | None = None,
+    *,
+    model_name: str | None = None,
+    max_samples: int | None = None,
+) -> Path:
     cfg = load_config(config_path)
 
     split = cfg.get("data.splits", ["test_task"])[0]
-    max_samples = cfg.get("data.max_samples")
+    if max_samples is None:
+        max_samples = cfg.get("data.max_samples")
 
     # Screenshots, not the JSON HTML: read what ``m2w-mm-export`` produced.
     exported = load_exported(split, path=cfg.get("data.examples") or None)
@@ -36,7 +43,7 @@ def run_eval(config_path: str | Path | None = None) -> Path:
     if max_samples:
         examples = examples[: int(max_samples)]
 
-    model = build_model(cfg.get("model.name", "api/gpt-4o-mini"))
+    model = build_model(model_name or cfg.get("model.name", "api/gpt-4o-mini"))
 
     run_dir = OUTPUT_DIR / f"eval_{split}"
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -60,8 +67,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--config", default=None, help="YAML file (defaults to configs/default.yaml)"
     )
+    parser.add_argument(
+        "--model",
+        default=None,
+        help="override model.name, e.g. vlm/Qwen/Qwen3.5-9B or api/gpt-4o-mini",
+    )
+    parser.add_argument(
+        "--max-samples",
+        type=int,
+        default=None,
+        help="cap the number of examples (overrides config)",
+    )
     args = parser.parse_args(argv)
-    run_eval(args.config)
+    run_eval(args.config, model_name=args.model, max_samples=args.max_samples)
     return 0
 
 

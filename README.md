@@ -279,6 +279,13 @@ model:
   # name: "hf/google/flan-t5-base"  # local HF model (resolved from hf-cache if downloaded)
 ```
 
+For a one-off run, override the model and the sample cap on the command line instead of
+editing the config — e.g. six examples with the local VLM:
+
+```bash
+CUDA_VISIBLE_DEVICES=1 uv run m2w-eval --model vlm/Qwen/Qwen3.5-9B --max-samples 6
+```
+
 > Changing the task: the VQG definition lives in `src/mind2web_vqg/data/vqg.py`, re-exported
 > by `src/mind2web_vqg/data/prepare.py::build_examples`. Edit the categories/templates there,
 > then rebuild with `uv run m2w-build-vqg`.

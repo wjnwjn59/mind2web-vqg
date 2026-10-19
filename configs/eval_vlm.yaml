@@ -1,6 +1,7 @@
 # Evaluate the screenshot VQG task with the local vision-language model.
 #
 #   uv run m2w-eval --config configs/eval_vlm.yaml
+#   (equivalent one-off: uv run m2w-eval --model vlm/Qwen/Qwen3.5-9B --max-samples 6)
 #   -> outputs/eval_test_task/predictions.json   (see "prediction")
 #
 # Needs `uv sync --extra vlm` and the weights in $MIND2WEB_HF_CACHE:

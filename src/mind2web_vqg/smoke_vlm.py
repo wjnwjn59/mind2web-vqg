@@ -33,9 +33,9 @@ from typing import Any
 
 from mind2web_vqg.cli import ensure_utf8
 from mind2web_vqg.config import load_config
-from mind2web_vqg.data.multimodal import export_samples
+from mind2web_vqg.data.vqg import load_exported
 from mind2web_vqg.models import build_model
-from mind2web_vqg.paths import OUTPUT_DIR, PROCESSED_DIR
+from mind2web_vqg.paths import OUTPUT_DIR
 
 #: Simple probes. ``{task}`` is filled from the example; others are static.
 PROBES: dict[str, dict[str, str]] = {
@@ -82,15 +82,8 @@ def build_prompt(probe: dict[str, str], example: dict[str, Any]) -> str:
 def load_examples(
     split: str, limit: int, examples_path: str | Path | None = None
 ) -> list[dict[str, Any]]:
-    """Read the exported ``examples.jsonl`` (exporting it first if missing)."""
-    path = Path(examples_path) if examples_path else (
-        PROCESSED_DIR / "multimodal" / split / "examples.jsonl"
-    )
-    if not path.exists():
-        export_samples(split, limit=limit)
-    with open(path, encoding="utf-8") as f:
-        examples = [json.loads(line) for line in f if line.strip()]
-    return examples[:limit]
+    """Read the exported ``examples.jsonl`` (same reader as ``m2w-build-vqg``)."""
+    return load_exported(split, path=examples_path, limit=limit)
 
 
 def run_smoke(

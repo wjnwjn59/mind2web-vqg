@@ -9,6 +9,7 @@ which model, which prompt, where to write results.
 | --- | --- |
 | `default.yaml` | Default config for `m2w-eval` and `m2w-train` |
 | `smoke.yaml` | `m2w-vlm-smoke` — split/limit/model/probes for the screenshot pipeline test |
+| `eval_vlm.yaml` | `m2w-eval` with the local VLM on `test_task`, 6 examples (needs `uv sync --extra vlm`) |
 
 ## How the code reads a config
 
@@ -31,8 +32,8 @@ declare every field.
 | --- | --- | --- | --- |
 | `data` | `splits` | `evaluate.py` | List of splits; **only the first element** is used |
 | `data` | `examples` | `evaluate.py` | Override the input `examples.jsonl`; `null` = `$MIND2WEB_DATA_DIR/processed/multimodal/<split>/examples.jsonl` |
-| `data` | `max_samples` | `evaluate.py` | Cap the number of examples for a quick test; `null` = all |
-| `model` | `name` | `evaluate.py` | `api/`, `hf/` or `vlm/<repo_id>` (see `src/mind2web_vqg/models/README.md`) |
+| `data` | `max_samples` | `evaluate.py` | Cap the number of examples for a quick test; `null` = all (the `--max-samples` flag overrides it) |
+| `model` | `name` | `evaluate.py` | `api/`, `hf/` or `vlm/<repo_id>` (see `src/mind2web_vqg/models/README.md`); the `--model` flag overrides it |
 | `model` | `temperature`, `max_new_tokens` | *(not read yet)* | Declared but `evaluate.py` doesn't pass them to the model |
 | `prompt` | `file`, `template` | *(not read yet)* | The real prompt lives in `src/mind2web_vqg/prompts/` |
 | `output` | `dir` | *(not read yet)* | `evaluate.py` hard-codes `outputs/eval_<split>/` |
@@ -40,6 +41,9 @@ declare every field.
 
 > ⚠️ `model.temperature`, `model.max_new_tokens`, `prompt.*` and `output.dir` are **not wired
 > into the code** yet. To make them take effect you must change `evaluate.py` (and/or `build_model`).
+
+For one-off runs you don't need a second file: `m2w-eval --model vlm/Qwen/Qwen3.5-9B
+--max-samples 6` overrides `model.name` and `data.max_samples` from the config.
 
 ## `smoke.yaml` fields
 

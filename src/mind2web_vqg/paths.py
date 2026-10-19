@@ -35,6 +35,11 @@ OUTPUT_DIR = PROJECT_ROOT / "outputs"
 PROMPT_DIR = Path(__file__).resolve().parent / "prompts"
 
 
+def flatten_repo_id(repo_id: str) -> str:
+    """hf-cache folder for a repo id: ``ns/repo`` -> ``ns_repo``."""
+    return repo_id.replace("/", "_")
+
+
 def ensure_dirs() -> None:
     """Create the required directories if missing (idempotent)."""
     for path in (RAW_DIR, PROCESSED_DIR, OUTPUT_DIR):

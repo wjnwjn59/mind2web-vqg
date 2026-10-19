@@ -24,22 +24,6 @@ Category reference (see ``data/vqg.py`` for the full docstring):
 
 from __future__ import annotations
 
-from mind2web_vqg.data.vqg import (
-    ALL_CATEGORIES,
-    SCREENSHOT_GROUNDED,
-    build_examples,
-    category_stats,
-    generate_questions,
-    load_exported,
-    write_examples,
-)
+from mind2web_vqg.data.vqg import build_examples, load_exported
 
-__all__ = [
-    "ALL_CATEGORIES",
-    "SCREENSHOT_GROUNDED",
-    "build_examples",
-    "category_stats",
-    "generate_questions",
-    "load_exported",
-    "write_examples",
-]
+__all__ = ["build_examples", "load_exported"]
