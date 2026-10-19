@@ -1,0 +1,19 @@
+# Evaluate the screenshot VQG task with the local vision-language model.
+#
+#   uv run m2w-eval --config configs/eval_vlm.yaml
+#   -> outputs/eval_test_task/predictions.json   (see "prediction")
+#
+# Needs `uv sync --extra vlm` and the weights in $MIND2WEB_HF_CACHE:
+#   uv run m2w-download-model Qwen/Qwen3.5-9B
+
+data:
+  splits: ["test_task"]
+  examples: null       # null = data/processed/multimodal/<split>/examples.jsonl (auto-exported if missing)
+  max_samples: 6       # counts EXAMPLES (one generated question each), not screenshots
+
+model:
+  # api/<model> also works against a served endpoint (set OPENAI_BASE_URL).
+  name: "vlm/Qwen/Qwen3.5-9B"
+  # NOTE: evaluate.py does not pass these to the model yet (see configs/README.md).
+  temperature: 0.0
+  max_new_tokens: 96
