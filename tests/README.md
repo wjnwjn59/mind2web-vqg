@@ -20,13 +20,58 @@ uv run pytest tests/test_smoke.py::test_config_loads
 | `test_config_loads` | `configs/default.yaml` loads and has `model.name` |
 | `test_project_root` | `PROJECT_ROOT/pyproject.toml` exists |
 
-These are smoke tests: fast, no data, no API calls.
+`test_multimodal.py` — pure helpers of the screenshot pipeline (no parquet, no PIL needed):
+
+| Test | Checks |
+| --- | --- |
+| `test_as_json_handles_strings_and_passthrough` | JSON-string columns decode, bad JSON falls back |
+| `test_parse_bbox` | `"x,y,w,h"` -> floats; malformed input -> `None` |
+| `test_target_element_prefers_original_target` | picks the `is_original_target` candidate |
+| `test_from_row_parses_the_real_schema` | row -> example dict (task, op, bbox, history) |
+| `test_image_name_is_filesystem_safe` | ids with `/` or spaces become safe file names |
+| `test_probe_task_substitution` | `{task}` is filled in the smoke probes |
+
+These are smoke tests: fast, no data, no API calls, no GPU.
+
+`test_download_multimodal.py` — the download command's pure helpers:
+
+| Test | Checks |
+| --- | --- |
+| `test_patterns_for` | split -> `data/<split>-*.parquet` globs |
+| `test_hint_when_default_nests_inside_mind2web` | warns when `MIND2WEB_MM_DIR` is unset on the lab server |
+| `test_no_hint_once_destination_has_data` | no nag on resume runs once files are present |
+| `test_dest_has_data_detects_parquet` | detects an in-use destination |
+| `test_no_hint_when_mm_dir_is_explicit` / `test_no_hint_for_local_default` | no false alarms |
+
+`test_vqg.py` — the self-supervised VQG task (`data/vqg.py`), pure and image-free:
+
+| Test | Checks |
+| --- | --- |
+| `test_role_from_tag` / `test_role_refines_input_by_type` | tag (and input `type`) -> human element word |
+| `test_role_none_for_unknown_or_missing_tag` | unmapped tags return `None` | 
+| `test_region_thirds` / `test_region_rescales_from_source_to_image` | bounding box -> coarse region |
+| `test_region_none_when_coordinates_are_off_page` | bad/off-page boxes are dropped |
+| `test_default_categories_are_screenshot_grounded` | defaults exclude the task-answered category |
+| `test_questions_and_answers` | the derived question/answer text |
+| `test_field_value_is_opt_in_and_answered_from_task` | `field_value` needs opting in |
+| `test_categories_skipped_when_answer_missing` | no answers -> no examples (stays answerable) |
+| `test_build_examples_ids_and_prompt` / `test_build_examples_can_omit_task` | ids, prompt, `--no-task` |
+| `test_category_stats` / `test_write_examples_round_trip` | counts + `examples.jsonl` round trip |
+
+`test_model_download.py` — the weights-download helpers (`models/download.py`):
+
+| Test | Checks |
+| --- | --- |
+| `test_flatten_repo_id` | `Qwen/Qwen3.5-9B` -> `Qwen_Qwen3.5-9B` |
+| `test_target_dir_uses_namespace_repo_name` | `<cache>/<ns>_<repo>` layout |
+| `test_hint_when_env_is_unset` | warns when weights would land in the repo |
+| `test_no_hint_when_env_is_set` | no warning when `MIND2WEB_HF_CACHE` is set |
 
 ## What's worth adding
 
 - `load_split` against a fake directory (pytest `tmp_path`) with sample JSON → verify file
   concatenation, dict-wrapped lists, and the error for an unknown split.
-- `build_examples` → every example has `id`, `input`, `target`; `len(examples)` is correct.
+- `load_exported` against a temporary `examples.jsonl` (no export attempt when the file exists).
 - `models.build_model` → unknown prefix raises `ValueError`; an `api/` prefix returns the
   right class (mocked, no API key needed).
 - `resolve_model_path` → a repo id maps to `<ns>_<repo>` when that folder exists.

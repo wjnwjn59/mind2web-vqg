@@ -51,7 +51,9 @@ class HFModel(QuestionGenerator):
         self.model.eval()
         self.max_new_tokens = max_new_tokens
 
-    def generate(self, prompt: str) -> str:
+    def generate(self, prompt: str, image: str | Path | None = None) -> str:
+        if image is not None:
+            raise ValueError("HFModel is text-only; use `vlm/<repo_id>` for screenshots.")
         inputs = self.tokenizer(prompt, return_tensors="pt", truncation=True).to(self.device)
         with self.torch.no_grad():
             out = self.model.generate(**inputs, max_new_tokens=self.max_new_tokens)

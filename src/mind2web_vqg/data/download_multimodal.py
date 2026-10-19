@@ -11,6 +11,12 @@ dataset name, so the default destination on the server is::
 
 Locally it falls back to ``./data/multimodal`` (gitignored).
 
+Where does the default come from? ``MULTIMODAL_DIR`` = ``$MIND2WEB_MM_DIR`` if set,
+otherwise ``$MIND2WEB_DATA_DIR/multimodal``. On the lab server ``MIND2WEB_DATA_DIR`` is
+usually ``/mnt/data/datasets/Mind2Web``, which would nest the screenshots **inside** the
+Mind2Web folder — the script warns about this. Set ``MIND2WEB_MM_DIR`` to keep the two
+datasets side by side.
+
 Usage::
 
     # 1) see what would be downloaded (no network writes, no data)
@@ -85,6 +91,35 @@ def _free_gb(path: Path) -> float:
     return shutil.disk_usage(probe).free / 1e9
 
 
+def dest_has_data(dest: Path) -> bool:
+    """True when ``dest`` already holds downloaded parquet files (i.e. is in use)."""
+    return any(dest.glob("data/*.parquet"))
+
+
+def nested_dest_hint(dest: Path, env: dict[str, str], has_data: bool = False) -> str | None:
+    """Warn when the default destination lands *inside* another dataset's folder.
+
+    ``MULTIMODAL_DIR`` defaults to ``$MIND2WEB_DATA_DIR/multimodal``, so on the lab
+    server (where ``MIND2WEB_DATA_DIR=/mnt/data/datasets/Mind2Web``) the screenshots
+    end up nested inside the Mind2Web dataset folder instead of next to it.
+
+    Nags only before the first file lands: pass ``has_data=True`` (see
+    :func:`dest_has_data`) once the destination is populated, since by then the
+    nesting is clearly intentional and the reminder is just noise on resume runs.
+    """
+    if env.get("MIND2WEB_MM_DIR") or has_data:
+        return None
+    data_dir = env.get("MIND2WEB_DATA_DIR")
+    if not data_dir or Path(dest) != Path(data_dir) / "multimodal":
+        return None
+    return (
+        f"MIND2WEB_MM_DIR is not set, so the dataset goes inside the Mind2Web folder ({dest}). "
+        "The lab convention keeps datasets side by side; set "
+        "MIND2WEB_MM_DIR=/mnt/data/datasets/Multimodal-Mind2Web to do the same. "
+        "Ignore this if the nesting is intentional."
+    )
+
+
 def download(
     splits: list[str],
     *,
@@ -100,6 +135,10 @@ def download(
     print(f"[mm] repo      : {REPO_ID}")
     print(f"[mm] splits    : {', '.join(splits)}")
     print(f"[mm] destination: {dest}")
+
+    hint = nested_dest_hint(dest, dict(os.environ), has_data=dest_has_data(dest))
+    if hint:
+        print(f"[mm] note: {hint}", file=sys.stderr)
 
     n_files, total_gb = estimate(patterns, token)
     print(f"[mm] would download {n_files} file(s), ~{total_gb:.1f} GB")

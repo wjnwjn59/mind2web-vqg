@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from pathlib import Path
 
 
 class QuestionGenerator(ABC):
@@ -12,10 +13,20 @@ class QuestionGenerator(ABC):
     """
 
     @abstractmethod
-    def generate(self, prompt: str) -> str:
-        """Generate a response (question) from the prompt."""
+    def generate(self, prompt: str, image: str | Path | None = None) -> str:
+        """Generate a response (question) from the prompt.
+
+        Args:
+            prompt: text instruction.
+            image: optional path to a screenshot. Text-only backends may ignore it
+                or raise; vision backends must use it.
+        """
         raise NotImplementedError
 
-    def generate_batch(self, prompts: list[str]) -> list[str]:
+    def generate_batch(
+        self, prompts: list[str], images: list[str | Path | None] | None = None
+    ) -> list[str]:
         """Defaults to sequential calls; subclasses can override for batching/async."""
-        return [self.generate(p) for p in prompts]
+        if images is None:
+            images = [None] * len(prompts)
+        return [self.generate(p, image=i) for p, i in zip(prompts, images, strict=True)]

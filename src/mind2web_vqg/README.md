@@ -12,6 +12,7 @@ mind2web_vqg/
 ├── config.py          # YAML -> Config, accessed via cfg.get("model.name")
 ├── cli.py             # ensure_utf8(): fixes UnicodeEncodeError on Windows consoles
 ├── evaluate.py        # eval loop: load -> build_examples -> model.generate -> predictions.json
+├── smoke_vlm.py       # screenshot -> VLM smoke test (6 probes) -> outputs/smoke_vlm/
 ├── train.py           # fine-tuning skeleton (not implemented)
 │
 ├── data/              # download & prepare data        -> data/README.md
@@ -27,14 +28,32 @@ configs/default.yaml
         ▼
 evaluate.run_eval
         │
-        ├─ data.load.load_split(split)        # read JSON under data/raw/data/<split>/
-        ├─ data.prepare.build_examples(...)   # -> [{id, input, target, meta}, ...]
-        ├─ models.build_model("api/..." | "hf/...")
-        └─ for each example: model.generate(input)
+        ├─ data.vqg.load_exported(split)      # read data/processed/multimodal/<split>/examples.jsonl
+        ├─ data.vqg.build_examples(...)       # -> [{id, input, target, answer, image, meta}, ...]
+        ├─ models.build_model("api/..." | "hf/..." | "vlm/...")
+        └─ for each example: model.generate(input, image=...)
                  │
                  ▼
         outputs/eval_<split>/predictions.json
 ```
+
+## How `m2w-vlm-smoke` flows
+
+```
+data/multimodal.py::export_samples   # parquet -> images/*.jpg + examples.jsonl
+        │
+        ▼
+smoke_vlm.run_smoke                  # 6 probes x N screenshots
+        │
+        ├─ models.build_model("vlm/Qwen/Qwen3.5-9B")
+        └─ model.generate(probe, image=path)
+                 │
+                 ▼
+outputs/smoke_vlm/<split>_<timestamp>/{results.jsonl, report.md}
+```
+
+This is a **pipeline** check, not the research task: it only answers "can the model see this
+screenshot, and is the latency acceptable?". The real VQG task is defined in `data/vqg.py`.
 
 ## Utility files
 
@@ -74,10 +93,11 @@ special characters doesn't break on Windows consoles (cp1252).
 
 | Goal | Edit |
 | --- | --- |
-| Define the VQG task (what's the input, what's the target) | `data/prepare.py::build_examples` 👈 **most important** |
+| Define the VQG task (what's the input, what's the target) | `data/vqg.py` 👈 **most important** (re-exported by `data/prepare.py`) |
 | Add evaluation metrics | `evaluate.py` |
 | Add a new model backend | `models/` + `models/__init__.py::build_model` |
 | Change the prompt | `prompts/question_gen.json` / `prompts/__init__.py` |
+| Change the smoke-test probes | `smoke_vlm.py::PROBES` |
 | Change the data location | env var, not code |
 | Implement fine-tuning | `train.py` |
 

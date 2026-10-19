@@ -1,0 +1,20 @@
+# Smoke-test run: is the screenshot -> VLM pipeline working?
+# Used by `m2w-vlm-smoke --config configs/smoke.yaml` (values are read the same way
+# as configs/default.yaml: cfg.get("data.split")).
+
+data:
+  split: test_task
+  limit: 5                 # how many exported screenshots to look at
+  max_width: 1280          # screenshots are downscaled to this width on export
+
+model:
+  name: "vlm/Qwen/Qwen3.5-9B"   # or "api/Qwen/Qwen3.5-9B" with OPENAI_BASE_URL set
+  max_new_tokens: 256
+  enable_thinking: false        # Qwen3.5 thinks by default; short VQA answers don't need it
+
+probes:                    # null = all probes (what / descriptive / yes-no / count / how / where)
+  - what_heading
+  - descriptive
+  - yes_no
+  - how_next
+  - where_target

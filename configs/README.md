@@ -8,6 +8,7 @@ which model, which prompt, where to write results.
 | File | Used by |
 | --- | --- |
 | `default.yaml` | Default config for `m2w-eval` and `m2w-train` |
+| `smoke.yaml` | `m2w-vlm-smoke` — split/limit/model/probes for the screenshot pipeline test |
 
 ## How the code reads a config
 
@@ -39,6 +40,20 @@ declare every field.
 
 > ⚠️ `model.temperature`, `model.max_new_tokens`, `prompt.*` and `output.dir` are **not wired
 > into the code** yet. To make them take effect you must change `evaluate.py` (and/or `build_model`).
+
+## `smoke.yaml` fields
+
+Read by `smoke_vlm.py` via `cfg.get(...)`:
+
+| Field | Meaning |
+| --- | --- |
+| `data.split` | Which split to export from (`test_task` is smallest) |
+| `data.limit` | How many screenshots to run the probes on |
+| `data.max_width` | *Documented only* — export downscaling is a CLI flag (`--max-width`) |
+| `model.name` | `vlm/<repo>` (local) or `api/<model>` (served endpoint) |
+| `model.max_new_tokens` | Answer length cap |
+| `model.enable_thinking` | Qwen3.5: `false` = direct answer, no ` thinking` block |
+| `probes` | Subset of `what_heading`, `descriptive`, `yes_no`, `count`, `how_next`, `where_target`; `null` = all |
 
 ## Creating your own config
 

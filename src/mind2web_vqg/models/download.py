@@ -10,6 +10,9 @@ Usage::
     uv run m2w-download-model google/flan-t5-base
     # -> $MIND2WEB_HF_CACHE/google_flan-t5-base (default ./hf-cache)
 
+    # on the lab server (and make it permanent in your shell profile)
+    export MIND2WEB_HF_CACHE=/mnt/data/hf-cache
+
 Equivalent hf CLI command::
 
     hf download google/flan-t5-base --local-dir /mnt/data/hf-cache/google_flan-t5-base
@@ -18,6 +21,7 @@ Equivalent hf CLI command::
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -37,6 +41,23 @@ def target_dir(repo_id: str, cache_dir: Path | None = None) -> Path:
     return (cache_dir or HF_CACHE_DIR) / flatten_repo_id(repo_id)
 
 
+def hf_cache_hint(env: dict[str, str]) -> str | None:
+    """Warn when weights would land in the repository's own ``./hf-cache``.
+
+    ``HF_CACHE_DIR`` falls back to ``<repo>/hf-cache`` when ``MIND2WEB_HF_CACHE`` is
+    unset. That default is fine locally, but on the lab server the weights belong under
+    ``/mnt/data/hf-cache`` (``<namespace>_<repo_name>``); a 9B model would otherwise fill
+    up the home directory.
+    """
+    if env.get("MIND2WEB_HF_CACHE"):
+        return None
+    return (
+        "MIND2WEB_HF_CACHE is not set, so weights go to <repo>/hf-cache. "
+        "On the lab server set MIND2WEB_HF_CACHE=/mnt/data/hf-cache (folder names are "
+        "<namespace>_<repo_name>). Pass --cache-dir to override just this run."
+    )
+
+
 def download_model(
     repo_id: str,
     *,
@@ -45,6 +66,10 @@ def download_model(
 ) -> Path:
     """Download the weights of ``repo_id`` into ``target_dir(repo_id)`` and return the folder."""
     dest = target_dir(repo_id, cache_dir)
+    if cache_dir is None:
+        hint = hf_cache_hint(dict(os.environ))
+        if hint:
+            print(f"[model] note: {hint}", file=sys.stderr)
     dest.parent.mkdir(parents=True, exist_ok=True)
     print(f"[model] downloading {repo_id} -> {dest}")
     path = snapshot_download(

@@ -1,41 +1,45 @@
-"""Preprocessing: turn Mind2Web instances into question-generation examples.
+"""The VQG task definition: screenshot -> "ask a question whose answer is on the screen".
 
-THIS IS WHERE YOU DEFINE YOUR VQG TASK.
+The task is **self-supervised Visual Question Generation**: given a web-page screenshot
+(and the user's task), the model asks a question about the page whose answer can be read
+off the screenshot. The answer is already visible, so the reference question is derived
+by rule from the action-level metadata — no human or LLM labelling.
 
-This is only a skeleton: ``build_examples`` returns a list of ``{input, target}``
-dicts with a placeholder definition. Replace it with your actual task definition.
+The implementation lives in :mod:`mind2web_vqg.data.vqg`; this module is the documented
+entry point used by ``evaluate.py`` / ``train.py`` and simply re-exports it.
+
+Input: the ``examples.jsonl`` written by ``m2w-mm-export`` (one action == one screenshot).
+Build it with::
+
+    uv run m2w-mm-export --split test_task --limit 5
+    uv run m2w-build-vqg  --split test_task --limit 5
+
+Category reference (see ``data/vqg.py`` for the full docstring):
+
+    target_label    what text is shown on the element needed for the task
+    element_type    what kind of UI element it is (button, link, text field, ...)
+    target_region   where on the page it is located
+    field_value     the value to type/select  (opt-in; answered from the task, not the image)
 """
 
 from __future__ import annotations
 
-from typing import Any
+from mind2web_vqg.data.vqg import (
+    ALL_CATEGORIES,
+    SCREENSHOT_GROUNDED,
+    build_examples,
+    category_stats,
+    generate_questions,
+    load_exported,
+    write_examples,
+)
 
-#: Example fields of a Mind2Web instance (for reference when writing the logic):
-#:   annotation_id, website, domain, subdomain, confirmed_task,
-#:   action_reprs (list[str]), actions (list[dict])
-#: Each action has: action_uid, raw_html, cleaned_html, operation{op,value},
-#:   pos_candidates (list), neg_candidates (list)
-
-
-def build_examples(instances: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Convert raw instances into ``(input, target)`` VQG examples.
-
-    TODO: define exactly what the input is (HTML? cleaned_html? the task
-    description?) and what the target question should be.
-    """
-    examples: list[dict[str, Any]] = []
-    for inst in instances:
-        examples.append(
-            {
-                # TODO: replace with the real context (cleaned_html, confirmed_task, ...)
-                "id": inst.get("annotation_id"),
-                "input": inst.get("confirmed_task", ""),
-                # TODO: replace with the expected question
-                "target": "",
-                "meta": {
-                    "website": inst.get("website"),
-                    "domain": inst.get("domain"),
-                },
-            }
-        )
-    return examples
+__all__ = [
+    "ALL_CATEGORIES",
+    "SCREENSHOT_GROUNDED",
+    "build_examples",
+    "category_stats",
+    "generate_questions",
+    "load_exported",
+    "write_examples",
+]

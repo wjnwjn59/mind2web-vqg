@@ -9,6 +9,7 @@ dependencies = [
     "datasets>=2.20",
     "huggingface_hub>=0.24",
     "pandas>=2.1",
+    "pillow>=10.0",
     "pyyaml>=6.0",
     "python-dotenv>=1.0",
     "tqdm>=4.66",
@@ -20,14 +21,24 @@ dependencies = [
 api = ["openai>=1.40"]
 # uv sync --extra local -> run a local model (inference)
 local = [
-    "torch>=2.2",
-    "transformers>=4.44",
+    "torch>=2.6",
+    "transformers>=5.20",
     "accelerate>=0.33",
 ]
+# uv sync --extra vlm -> local vision-language model (screenshots)
+vlm = [
+    "torch>=2.6",
+    "torchvision",
+    "transformers>=5.20",
+    "accelerate>=0.33",
+    "pillow>=10.0",
+]
+# uv sync --extra render -> render Mind2Web HTML with Chromium (sanity check only)
+render = ["playwright>=1.45", "pillow>=10.0"]
 # uv sync --extra train -> fine-tune (add when you start training)
 train = [
-    "torch>=2.2",
-    "transformers>=4.44",
+    "torch>=2.6",
+    "transformers>=5.20",
     "accelerate>=0.33",
     "peft>=0.12",
     "sentencepiece>=0.2",
@@ -43,6 +54,10 @@ dev = [
 m2w-download = "mind2web_vqg.data.download:main"
 m2w-download-mm = "mind2web_vqg.data.download_multimodal:main"
 m2w-download-model = "mind2web_vqg.models.download:main"
+m2w-mm-export = "mind2web_vqg.data.multimodal:main"
+m2w-build-vqg = "mind2web_vqg.data.vqg:main"
+m2w-render-html = "mind2web_vqg.data.render_html:main"
+m2w-vlm-smoke = "mind2web_vqg.smoke_vlm:main"
 m2w-eval = "mind2web_vqg.evaluate:main"
 m2w-train = "mind2web_vqg.train:main"
 

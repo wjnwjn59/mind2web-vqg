@@ -34,6 +34,8 @@ uv sync
 # Install extras as needed:
 uv sync --extra api     # LLM API baseline (openai)
 uv sync --extra local   # run a local HF model (torch + transformers)
+uv sync --extra vlm     # local vision-language model (screenshots)
+uv sync --extra render  # Playwright, to render HTML as a sanity check
 uv sync --extra train   # fine-tuning (adds peft, sentencepiece)
 ```
 
@@ -60,9 +62,10 @@ mind2web-vqg/
 │
 ├── data/                     # ⚠️ DO NOT commit (gitignored)
 │   ├── raw/                  # downloaded Mind2Web data (see section 4)
+│   ├── multimodal/           # Multimodal-Mind2Web parquet + screenshots (section 5)
 │   └── processed/            # data preprocessed for the VQG task
 │
-├── hf-cache/                 # ⚠️ downloaded model weights (gitignored, see section 7)
+├── hf-cache/                 # ⚠️ downloaded model weights (gitignored, see section 8)
 │
 ├── src/mind2web_vqg/         # main code (Python package)
 │   ├── __init__.py
@@ -71,15 +74,20 @@ mind2web-vqg/
 │   ├── cli.py                # CLI helpers (UTF-8 output...)
 │   ├── data/
 │   │   ├── download.py       # download Mind2Web (train + test.zip)
+│   │   ├── download_multimodal.py # download Multimodal-Mind2Web (screenshots)
+│   │   ├── multimodal.py     # parquet -> JPEGs + examples.jsonl
+│   │   ├── render_html.py    # Playwright render check (HTML -> PNG)
 │   │   ├── load.py           # load splits into list[dict]
 │   │   └── prepare.py        # 👉 define the VQG task HERE
 │   ├── models/
-│   │   ├── base.py           # QuestionGenerator interface
-│   │   ├── api.py            # API baseline (OpenAI)
-│   │   ├── hf.py             # local HuggingFace model
+│   │   ├── base.py           # QuestionGenerator interface (text + image)
+│   │   ├── api.py            # API baseline (OpenAI, vision-capable)
+│   │   ├── hf.py             # local HuggingFace model (text)
+│   │   ├── vlm.py            # local vision-language model (Qwen-VL/Qwen3.5)
 │   │   └── download.py       # download weights via the hf-cache convention
 │   ├── prompts/
 │   │   └── question_gen.json # prompt template
+│   ├── smoke_vlm.py          # screenshot -> VLM smoke test (6 simple probes)
 │   ├── evaluate.py           # evaluation loop -> outputs/
 │   └── train.py              # fine-tuning skeleton (run on the cloud)
 │
@@ -100,7 +108,7 @@ and model weights in `hf-cache/`.
 | [`src/README.md`](src/README.md) | Why the `src/` layout, list of CLI commands |
 | [`src/mind2web_vqg/README.md`](src/mind2web_vqg/README.md) | Eval flow, `paths`/`config`/`cli`, which file to edit |
 | [`src/mind2web_vqg/data/README.md`](src/mind2web_vqg/data/README.md) | `download` → `load` → `prepare`, plus the screenshot dataset |
-| [`src/mind2web_vqg/models/README.md`](src/mind2web_vqg/models/README.md) | Model interface, API/HF backends, `hf-cache` convention |
+| [`src/mind2web_vqg/models/README.md`](src/mind2web_vqg/models/README.md) | Model interface, API/HF/VLM backends, `hf-cache` convention |
 | [`src/mind2web_vqg/prompts/README.md`](src/mind2web_vqg/prompts/README.md) | Prompt templates (note: not wired into eval yet) |
 | [`notebooks/README.md`](notebooks/README.md) | Running Jupyter, snippets for exploring the data |
 | [`tests/README.md`](tests/README.md) | Running pytest, what to test next |
@@ -138,7 +146,7 @@ data/raw/
 └── test.zip            (already extracted, safe to delete)
 ```
 
-> On the lab server, change the target directory with an env var (see section 7):
+> On the lab server, change the target directory with an env var (see section 8):
 > `export MIND2WEB_DATA_DIR=/mnt/data/datasets/Mind2Web`
 
 Quick sanity check:
@@ -172,7 +180,90 @@ uv run python -m mind2web_vqg.data.load
 
 ---
 
-## 5. Running evaluation
+## 5. Screenshots, the VLM smoke test, and the VQG task
+
+Mind2Web's JSON has **no images** — `raw_html` / `cleaned_html` are DOM dumps whose CSS,
+fonts and assets were stripped. So there are two separate things to check:
+
+**A. Render the HTML with Playwright (visual check only).** This shows how unusable the
+stripped HTML is as an "image", and it's the fastest way to convince yourself that the
+screenshots must come from elsewhere.
+
+```bash
+uv sync --extra render
+uv run playwright install chromium            # once per machine, ~150 MB
+
+uv run m2w-render-html --split test_task --limit 3 --compare-mm
+# -> outputs/render_check/test_task/index.html  (raw | cleaned | real screenshot)
+```
+
+**B. Use the real screenshots from `osunlp/Multimodal-Mind2Web`** (action-level parquet,
+image embedded in each row). Download, export, then run a VLM:
+
+```bash
+export MIND2WEB_MM_DIR=/mnt/data/datasets/Multimodal-Mind2Web   # lab convention
+uv run m2w-download-mm --dry-run                                # file count + size only
+uv run m2w-download-mm --splits test_task                       # 1.3 GB
+
+uv run m2w-mm-export --split test_task --limit 5                # -> data/processed/multimodal/...
+uv run m2w-vlm-smoke --split test_task --limit 5                # -> outputs/smoke_vlm/...
+```
+
+`m2w-vlm-smoke` asks six deliberately simple probes per screenshot, one per classic VQA
+type (`what` / `descriptive` / `yes-no` / `count` / `how` / `where`), and writes
+`results.jsonl` + `report.md`. The point is to verify three things before designing the
+real task: the image is readable, the model actually sees it, and latency is acceptable.
+
+Model choices:
+
+```bash
+# local transformers: first fetch the weights (lab convention -> $MIND2WEB_HF_CACHE)
+uv run m2w-download-model Qwen/Qwen3.5-9B       # -> /mnt/data/hf-cache/Qwen_Qwen3.5-9B
+
+# needs `uv sync --extra vlm`; ~18 GB VRAM for 9B in bf16
+uv run m2w-vlm-smoke --model vlm/Qwen/Qwen3.5-9B
+
+# a served model (vLLM / SGLang / transformers serve) — much faster, no local weights
+export OPENAI_BASE_URL=http://localhost:8000/v1
+uv run m2w-vlm-smoke --model api/Qwen/Qwen3.5-9B
+```
+
+> Why `Qwen3.5-9B`: it is natively multimodal (`pipeline_tag: image-text-to-text`), fits
+> one 24 GB card at bf16, and works with `transformers>=5.20`. Qwen3.5 **thinks by
+> default**; `enable_thinking: false` in `configs/smoke.yaml` gives short, direct answers.
+
+### The VQG task (self-supervised)
+
+The task is **what the model must ask**, and it lives in `data/vqg.py`
+(`data/prepare.py::build_examples` re-exports it). Given a screenshot, the model asks a
+question whose answer is **on the screen** — so the reference question and its answer are
+derived by rule from the action metadata, with no human or LLM labelling:
+
+| Category | Question is about | Answer comes from |
+| --- | --- | --- |
+| `target_label` | the text shown on the element the task needs | the element's visible text |
+| `element_type` | what kind of UI element it is (button, link, text field, ...) | tag + input `type` |
+| `target_region` | where on the page it is located | the element's bounding box |
+| `field_value` | the value to type or select *(opt-in)* | the task + operation |
+
+The first three are **screenshot-grounded** and are the default; `field_value` is the only
+one answered from the task text, so it must be requested explicitly.
+
+```bash
+uv run m2w-build-vqg --split test_task --limit 5
+# [vqg] 5 screenshot(s) -> 13 example(s) -> data/processed/vqg/test_task/examples.jsonl
+
+uv run m2w-build-vqg --split test_task --limit 5 --categories field_value
+```
+
+Each line is `{id, input, target, answer, image, meta}`: `input` is the generation prompt
+(instruction + the user's task), `target` the reference question, `answer` its ground truth.
+A category whose answer is missing for a row (no label, unmapped tag, off-page box) is
+skipped, so every emitted example stays answerable.
+
+---
+
+## 6. Running evaluation
 
 ```bash
 uv run m2w-eval --config configs/default.yaml
@@ -188,24 +279,26 @@ model:
   # name: "hf/google/flan-t5-base"  # local HF model (resolved from hf-cache if downloaded)
 ```
 
-> Changing the task: edit `src/mind2web_vqg/data/prepare.py::build_examples` to define the
-> input/target for VQG. This is the first place you should modify.
+> Changing the task: the VQG definition lives in `src/mind2web_vqg/data/vqg.py`, re-exported
+> by `src/mind2web_vqg/data/prepare.py::build_examples`. Edit the categories/templates there,
+> then rebuild with `uv run m2w-build-vqg`.
 
 ---
 
-## 6. Fine-tuning (cloud / lab server)
+## 7. Fine-tuning (cloud / lab server)
 
 The training skeleton lives in `src/mind2web_vqg/train.py` (still a TODO). Suggested workflow:
 
-1. **Prepare locally:** download the data, write `build_examples` → export `data/processed/`.
-2. **Move to the cloud/server:** Colab/Kaggle/rented GPU or the lab server (section 7);
+1. **Prepare locally:** download the data, then `m2w-mm-export` + `m2w-build-vqg` →
+   `data/processed/vqg/`.
+2. **Move to the cloud/server:** Colab/Kaggle/rented GPU or the lab server (section 8);
    install `uv` (or pip) + `uv sync --extra train`.
 3. **Train:** `uv run m2w-train --config configs/default.yaml`.
 4. **Bring the model back locally** to re-evaluate it with `hf/...`.
 
 ---
 
-## 7. Running on the lab server (AIVN-VLAI)
+## 8. Running on the lab server (AIVN-VLAI)
 
 Mandatory lab conventions (summary — read the full original document too):
 
@@ -234,6 +327,9 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 ```bash
 export MIND2WEB_DATA_DIR=/mnt/data/datasets/Mind2Web   # data -> /mnt/data/datasets/Mind2Web/raw
+export MIND2WEB_MM_DIR=/mnt/data/datasets/Multimodal-Mind2Web   # screenshots
+#   (omit this line to reuse the default $MIND2WEB_DATA_DIR/multimodal, which nests the
+#    screenshots inside the Mind2Web folder — fine if you plan to keep them together)
 export MIND2WEB_HF_CACHE=/mnt/data/hf-cache            # weights -> /mnt/data/hf-cache
 ```
 
@@ -270,20 +366,24 @@ CUDA_VISIBLE_DEVICES=1 uv run m2w-train --config configs/default.yaml
 
 ---
 
-## 8. Important notes
+## 9. Important notes
 
 - ⚠️ **Do NOT commit the Mind2Web data to GitHub.** The dataset license requires:
   > "Please DO NOT redistribute the unzipped data files online."
   The `data/` directory is gitignored.
 - ⚠️ **Do NOT commit `.env`** (it holds API keys). Only commit `.env.example`.
 - 🏷️ The dataset is licensed under **CC BY 4.0**; the Mind2Web code under **MIT**.
-- 🧾 Cite Mind2Web if you use it in research (see section 10).
+- 🧾 Cite Mind2Web if you use it in research (see section 11).
 
 ---
 
-## 9. Roadmap
+## 10. Roadmap
 
-- [ ] Define the concrete VQG task in `data/prepare.py`.
+- [x] Define the concrete VQG task in `data/vqg.py` (self-supervised, screenshot-grounded).
+- [x] Render HTML with Playwright (sanity check) and export real screenshots.
+- [x] Screenshot -> VLM smoke test (Qwen3.5-9B, 6 simple probes).
+- [x] Pick the question taxonomy (`target_label` / `element_type` / `target_region` / `field_value`).
+- [ ] Generate the first real VQG set with `m2w-build-vqg` and eyeball it.
 - [ ] Add evaluation metrics (BLEU / ROUGE / LLM-as-judge).
 - [ ] API baseline + comparison against local HF models.
 - [ ] A complete fine-tuning pipeline.
@@ -291,7 +391,7 @@ CUDA_VISIBLE_DEVICES=1 uv run m2w-train --config configs/default.yaml
 
 ---
 
-## 10. Citation
+## 11. Citation
 
 ```bibtex
 @misc{deng2023mind2web,

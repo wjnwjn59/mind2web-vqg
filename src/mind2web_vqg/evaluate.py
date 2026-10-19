@@ -1,7 +1,9 @@
 """Evaluation loop: generate a question for each example and write the results.
 
-The skeleton is ready; you only need to edit ``build_examples`` (data/prepare.py)
-and add the metrics that match your task.
+The task is screenshot VQG (see ``data/prepare.py`` / ``data/vqg.py``): every example is
+an exported screenshot, and the model is asked to produce the question that ``input``
+describes. Predictions are compared against the reference question/answer by hand for now;
+add the metrics that match your task below.
 
 Usage::
 
@@ -17,8 +19,7 @@ from pathlib import Path
 
 from mind2web_vqg.cli import ensure_utf8
 from mind2web_vqg.config import load_config
-from mind2web_vqg.data.load import load_split
-from mind2web_vqg.data.prepare import build_examples
+from mind2web_vqg.data.prepare import build_examples, load_exported
 from mind2web_vqg.models import build_model
 from mind2web_vqg.paths import OUTPUT_DIR
 
@@ -27,11 +28,11 @@ def run_eval(config_path: str | Path | None = None) -> Path:
     cfg = load_config(config_path)
 
     split = cfg.get("data.splits", ["test_task"])[0]
-    root = cfg.get("data.root") or None
     max_samples = cfg.get("data.max_samples")
 
-    instances = load_split(split) if root is None else load_split(split, root)
-    examples = build_examples(instances)
+    # Screenshots, not the JSON HTML: read what ``m2w-mm-export`` produced.
+    exported = load_exported(split, path=cfg.get("data.examples") or None)
+    examples = build_examples(exported)
     if max_samples:
         examples = examples[: int(max_samples)]
 
@@ -42,7 +43,7 @@ def run_eval(config_path: str | Path | None = None) -> Path:
 
     results: list[dict] = []
     for ex in examples:
-        pred = model.generate(ex["input"])
+        pred = model.generate(ex["input"], image=ex.get("image"))
         results.append({**ex, "prediction": pred})
 
     out_file = run_dir / "predictions.json"

@@ -1,9 +1,9 @@
 {
-  "system": "You are a helpful assistant that asks concise clarifying questions about web pages.",
+  "system": "You ask short questions about a web page screenshot whose answers are visible on the screen.",
   "templates": [
     {
       "name": "default",
-      "template": "Task: {task}\n\nPage (cleaned HTML):\n{html}\n\nGenerate one clarifying question about this page to help complete the task.\nQuestion:"
+      "template": "You are shown a screenshot of a web page. Ask exactly one question about the page whose answer can be read from the screenshot, focusing on {focus}.\nThe user's task is: {task}\nOutput only the question."
     }
   ]
 }

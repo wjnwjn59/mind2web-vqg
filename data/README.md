@@ -17,7 +17,10 @@ data/
 │       ├── test_task-0000*-of-00005-*.parquet
 │       ├── test_website-0000*-of-00004-*.parquet
 │       └── test_domain-00000*-of-00011-*.parquet
-└── processed/    # data converted into (input/target) examples — currently empty
+└── processed/    # data converted into (input/target) examples
+    └── multimodal/<split>/
+        ├── images/*.jpg        # written by `m2w-mm-export`
+        └── examples.jsonl      # one JSON object per action
 ```
 
 The two `.gitkeep` files only keep the folders alive in git; everything else is blocked by
@@ -94,6 +97,12 @@ Destination defaults to `$MIND2WEB_MM_DIR`, else `./data/multimodal`:
 export MIND2WEB_MM_DIR=/mnt/data/datasets/Multimodal-Mind2Web   # lab convention
 ```
 
+> ⚠️ If `MIND2WEB_MM_DIR` is unset **and** `MIND2WEB_DATA_DIR=/mnt/data/datasets/Mind2Web`,
+> the default becomes `/mnt/data/datasets/Mind2Web/multimodal` — nested *inside* the Mind2Web
+> folder. `m2w-download-mm` now warns about this. Already downloaded there? Move it (a plain
+> `mv` on the same filesystem is instant, no copy):
+> `mv /mnt/data/datasets/Mind2Web/multimodal /mnt/data/datasets/Multimodal-Mind2Web`
+
 Layout and coverage (rows are **actions**, not tasks):
 
 ```
@@ -118,19 +127,78 @@ human-verified actions have images — which is why both datasets are kept side 
 Re-running resumes: existing files are verified and skipped. Never pass `--force` unless you
 really want to re-download.
 
+## From parquet to something a model can read
+
+```bash
+# export screenshots as JPEG + metadata (default: data/processed/multimodal/<split>/)
+uv run m2w-mm-export --split test_task --limit 5
+
+# build the self-supervised VQG set from those screenshots
+uv run m2w-build-vqg --split test_task --limit 5
+# -> data/processed/vqg/test_task/examples.jsonl
+
+# then run the pipeline smoke test
+uv run m2w-vlm-smoke --split test_task --limit 5 --config configs/smoke.yaml
+```
+
+`examples.jsonl` fields (`m2w-mm-export`): `id`, `annotation_id`, `action_uid`, `task`,
+`action_history`, `target_action`, `op`, `value`, `target_tag`, `target_type`,
+`target_role`, `target_text`, `target_bbox`, `source_size`, `image_size`, `image`.
+See `src/mind2web_vqg/data/README.md` for the full pipeline.
+
+`m2w-build-vqg` turns every screenshot into up to four answered questions; each output line
+is `{id, input, target, answer, image, meta}` where `input` is the generation prompt,
+`target` the reference question and `answer` its ground truth:
+
+| Category | Question is about | Answer from | Default |
+| --- | --- | --- | --- |
+| `target_label` | the text on the element the task needs | visible text | yes |
+| `element_type` | what kind of UI element it is | tag + input `type` | yes |
+| `target_region` | where on the page it is | bounding box | yes |
+| `field_value` | the value to type/select | the task | opt-in |
+
+```bash
+uv run m2w-build-vqg --split test_task --categories target_label target_region
+uv run m2w-build-vqg --split test_task --categories field_value
+```
+
+### Check what the HTML render looks like (optional, once per machine)
+
+```bash
+uv sync --extra render
+uv run playwright install chromium
+uv run m2w-render-html --split test_task --limit 3 --compare-mm
+# -> outputs/render_check/test_task/index.html  (real screenshot vs rendered HTML)
+```
+
+This is a **sanity check**, not a data source: the JSON HTML had its CSS, fonts and assets
+stripped, so rendering it produces an unstyled page. Screenshots only come from
+Multimodal-Mind2Web.
+
 ## How data flows
 
+Two chains exist: the **screenshot chain** (the real VQG task) and the original JSON chain.
+
 ```
-data/raw/  --(data/load.py)-->  list[dict]  --(data/prepare.py)-->  [{input, target, ...}]
-                                                                          |
-                                                              evaluate.py / train.py
+# screenshots (the VQG input)
+Multimodal-Mind2Web parquet --(data/multimodal.py)--> JPEGs + examples.jsonl
+                            --(data/vqg.py)--------> [{input, target, answer, image, ...}]
+                                                             |
+                                                  evaluate.py / train.py
+
+# JSON (still the complete benchmark)
+data/raw/ --(data/load.py)--> list[dict]   (task text, HTML, actions)
 ```
 
 - `load.py`: only reads JSON and concatenates every file in a split.
-- `prepare.py`: **where you define the VQG task** (`build_examples`). Currently a skeleton:
-  `input = confirmed_task`, `target = ""`.
-- `processed/`: intended for the output of `prepare.py` so it can be shared/reused.
-  No code writes here yet.
+- `multimodal.py`: `m2w-mm-export` — parquet rows -> JPEGs + `examples.jsonl`
+  (`data/processed/multimodal/<split>/`).
+- `vqg.py`: **where the VQG task is defined** (`build_examples`). Rule-based,
+  self-supervised questions whose answers are on the screen: `target_label` /
+  `element_type` / `target_region`, plus opt-in `field_value`.
+- `prepare.py`: the documented entry point — re-exports `build_examples` from `vqg.py`.
+- `processed/`: output of the two steps above so it can be shared/reused
+  (`m2w-mm-export` -> `data/processed/multimodal/`, `m2w-build-vqg` -> `data/processed/vqg/`).
 
 ## Main fields of an instance
 

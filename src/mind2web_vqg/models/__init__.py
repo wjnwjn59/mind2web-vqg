@@ -10,7 +10,8 @@ def build_model(name: str, **kwargs):
 
     The prefix selects the backend:
       - ``api/...`` -> APIModel
-      - ``hf/...``  -> HFModel
+      - ``hf/...``  -> HFModel (text only)
+      - ``vlm/...`` -> VLMModel (screenshots, local transformers)
     """
     if name.startswith("api/"):
         from mind2web_vqg.models.api import APIModel
@@ -20,4 +21,10 @@ def build_model(name: str, **kwargs):
         from mind2web_vqg.models.hf import HFModel
 
         return HFModel(name.removeprefix("hf/"), **kwargs)
-    raise ValueError(f"Unknown backend for model {name!r}. Use the 'api/' or 'hf/' prefix.")
+    if name.startswith("vlm/"):
+        from mind2web_vqg.models.vlm import VLMModel
+
+        return VLMModel(name.removeprefix("vlm/"), **kwargs)
+    raise ValueError(
+        f"Unknown backend for model {name!r}. Use the 'api/', 'hf/' or 'vlm/' prefix."
+    )
