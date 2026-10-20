@@ -39,30 +39,48 @@ TEST_ZIP_PASSWORD = b"mind2web"
 
 
 def _normalise_split_layout(dest: Path) -> list[Path]:
-    """Move split directories into ``dest/data/`` — the layout every loader expects.
+    """Merge every loose split directory into ``dest/data/<split>`` — the layout loaders read.
 
     ``test.zip`` stores ``test_task/`` at its own root, whereas the train split arrives as
     ``data/train/`` (that is its path inside the HF repo), so extracting both into ``dest``
     leaves the splits in two different roots and ``available_splits()`` only sees train.
 
-    Idempotent: a split already under ``data/`` is left alone, and nothing is overwritten.
+    Same-named files are **replaced**: re-extracting the archive is the repair path for a
+    truncated file, so keeping the old copy would silently preserve the corruption. Idempotent:
+    a loose directory that does not exist is simply skipped.
     """
     data_dir = dest / "data"
     moved: list[Path] = []
     for split in SPLITS:
         loose = dest / split
+        if not loose.is_dir():
+            continue
+
         target = data_dir / split
-        if loose.is_dir() and not target.exists():
-            data_dir.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(loose), str(target))
-            moved.append(target)
+        target.mkdir(parents=True, exist_ok=True)
+        for path in sorted(loose.rglob("*")):
+            if not path.is_file():
+                continue
+            destination = target / path.relative_to(loose)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.unlink(missing_ok=True)
+            shutil.move(str(path), str(destination))
+
+        shutil.rmtree(loose, ignore_errors=True)
+        moved.append(target)
     return moved
 
 
 def _unzip_test(zip_path: Path, dest: Path) -> None:
     print(f"[download] extracting {zip_path.name} (password: mind2web) ...")
-    with zipfile.ZipFile(zip_path) as zf:
-        zf.extractall(path=dest, pwd=TEST_ZIP_PASSWORD)
+    try:
+        with zipfile.ZipFile(zip_path) as zf:
+            zf.extractall(path=dest, pwd=TEST_ZIP_PASSWORD)
+    except zipfile.BadZipFile as error:
+        raise RuntimeError(
+            f"{zip_path} is corrupt ({error}). Delete that file and re-run "
+            "`uv run m2w-download --skip-train --force`."
+        ) from error
     _normalise_split_layout(dest)
     print(f"[download] done -> {dest / 'data'}")
 

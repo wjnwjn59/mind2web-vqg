@@ -110,7 +110,8 @@ These are smoke tests: fast, no data, no API calls, no GPU.
 | --- | --- |
 | `test_unzip_moves_the_test_splits_under_data` | `test.zip` root layout ends as `raw/data/<split>` |
 | `test_unzip_keeps_an_archive_that_already_has_the_data_prefix` | an archive with `data/…` is left alone |
-| `test_normalise_*` | idempotent, never overwrites, creates `data/`, leaves `train` alone |
+| `test_unzip_explains_a_corrupt_archive` | `BadZipFile` becomes a `RuntimeError` naming `--force` |
+| `test_normalise_*` | idempotent, repairs a broken file, drops the loose shell, creates `data/` |
 | `test_verify_accepts_a_healthy_layout` | per-split file/row counts, exit 0 |
 | `test_verify_names_a_truncated_file` | prints `BROKEN <file>` and exits 1 |
 | `test_verify_reports_a_missing_split_without_failing` | a split that was not downloaded is not an error |

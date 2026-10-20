@@ -22,10 +22,11 @@ Downloads from HuggingFace `osunlp/Mind2Web` via `snapshot_download`:
   `test_task/`, `test_website/`, `test_domain/`
 
 The archive stores those three splits **at its own root**, while the train split arrives as
-`data/train/`. Extraction therefore ends with a normalisation step that moves the loose
-`test_*` directories under `data/`, so every split ends up as `raw/data/<split>` — the only
-layout the loaders read. That step is idempotent and never overwrites an existing split, so
-re-running the command also repairs an older, mixed layout.
+`data/train/`. Extraction therefore ends with a merge step that moves the loose `test_*`
+directories under `data/`, so every split ends up as `raw/data/<split>` — the only layout
+the loaders read. Same-named files are replaced, which is what makes re-running the command
+a repair: an interrupted extraction leaves a truncated file, and re-extracting overwrites it
+instead of keeping the broken copy.
 
 ```bash
 uv run m2w-download              # both

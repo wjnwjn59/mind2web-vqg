@@ -52,6 +52,17 @@ def test_unzip_keeps_an_archive_that_already_has_the_data_prefix(tmp_path: Path)
     assert not (raw / "test_task").exists()
 
 
+def test_unzip_explains_a_corrupt_archive(tmp_path: Path) -> None:
+    archive = tmp_path / "test.zip"
+    archive.write_bytes(b"not a zip at all")
+
+    with pytest.raises(RuntimeError) as error:
+        _unzip_test(archive, tmp_path / "raw")
+
+    assert "corrupt" in str(error.value)
+    assert "--force" in str(error.value)
+
+
 def test_normalise_leaves_the_train_split_alone(tmp_path: Path) -> None:
     (tmp_path / "data" / "train").mkdir(parents=True)
     (tmp_path / "test_task").mkdir()
@@ -68,14 +79,19 @@ def test_normalise_is_idempotent(tmp_path: Path) -> None:
     assert _normalise_split_layout(tmp_path) == []
 
 
-def test_normalise_never_overwrites_an_existing_split(tmp_path: Path) -> None:
-    _write(tmp_path / "data" / "test_task" / "kept.json", "[]")
-    _write(tmp_path / "test_task" / "loose.json", "[]")
+def test_normalise_repairs_an_existing_split(tmp_path: Path) -> None:
+    """Re-extracting is the repair path: the fresh file must replace the broken copy."""
+    _write(tmp_path / "data" / "test_task" / "broken.json", "[{")
+    _write(tmp_path / "data" / "test_task" / "other.json", "[]")
+    _write(tmp_path / "test_task" / "broken.json", "[]")
+    _write(tmp_path / "test_task" / "new.json", "[]")
 
-    assert _normalise_split_layout(tmp_path) == []
+    assert _normalise_split_layout(tmp_path) == [tmp_path / "data" / "test_task"]
 
-    assert (tmp_path / "data" / "test_task" / "kept.json").is_file()
-    assert (tmp_path / "test_task" / "loose.json").is_file()
+    assert (tmp_path / "data" / "test_task" / "broken.json").read_text() == "[]"
+    assert (tmp_path / "data" / "test_task" / "new.json").is_file()
+    assert (tmp_path / "data" / "test_task" / "other.json").is_file()
+    assert not (tmp_path / "test_task").exists()
 
 
 def test_normalise_creates_the_data_directory_when_missing(tmp_path: Path) -> None:
