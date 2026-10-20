@@ -21,6 +21,7 @@ NOTE: data under ``data/`` is gitignored -> do NOT commit it to GitHub.
 from __future__ import annotations
 
 import argparse
+import shutil
 import sys
 import zipfile
 from pathlib import Path
@@ -28,6 +29,7 @@ from pathlib import Path
 from huggingface_hub import snapshot_download
 
 from mind2web_vqg.cli import ensure_utf8
+from mind2web_vqg.data.load import SPLITS, available_splits
 from mind2web_vqg.paths import RAW_DIR, ensure_dirs
 
 REPO_ID = "osunlp/Mind2Web"
@@ -35,11 +37,33 @@ TEST_ZIP_NAME = "test.zip"
 TEST_ZIP_PASSWORD = b"mind2web"
 
 
+def _normalise_split_layout(dest: Path) -> list[Path]:
+    """Move split directories into ``dest/data/`` — the layout every loader expects.
+
+    ``test.zip`` stores ``test_task/`` at its own root, whereas the train split arrives as
+    ``data/train/`` (that is its path inside the HF repo), so extracting both into ``dest``
+    leaves the splits in two different roots and ``available_splits()`` only sees train.
+
+    Idempotent: a split already under ``data/`` is left alone, and nothing is overwritten.
+    """
+    data_dir = dest / "data"
+    moved: list[Path] = []
+    for split in SPLITS:
+        loose = dest / split
+        target = data_dir / split
+        if loose.is_dir() and not target.exists():
+            data_dir.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(loose), str(target))
+            moved.append(target)
+    return moved
+
+
 def _unzip_test(zip_path: Path, dest: Path) -> None:
     print(f"[download] extracting {zip_path.name} (password: mind2web) ...")
     with zipfile.ZipFile(zip_path) as zf:
         zf.extractall(path=dest, pwd=TEST_ZIP_PASSWORD)
-    print(f"[download] done -> {dest}")
+    _normalise_split_layout(dest)
+    print(f"[download] done -> {dest / 'data'}")
 
 
 def download(
@@ -79,6 +103,14 @@ def download(
             _unzip_test(zip_path, dest)
 
     print(f"[download] finished. Data at: {dest / 'data'}")
+    found = available_splits(dest / "data")
+    print(f"[download] splits available: {', '.join(found) or 'none'}")
+    leftovers = [split for split in SPLITS if (dest / split).is_dir()]
+    if leftovers:
+        print(
+            f"[download] warning: {', '.join(leftovers)} also exists directly under {dest}; "
+            f"the loaders read only {dest / 'data'}"
+        )
     return dest
 
 

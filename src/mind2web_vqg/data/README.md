@@ -18,16 +18,26 @@ download_multimodal.py  -->  data/multimodal/  (action-level parquet, screenshot
 Downloads from HuggingFace `osunlp/Mind2Web` via `snapshot_download`:
 
 - `data/train/*.json` — the train split
-- `test.zip` — extracted in place with password `mind2web`, producing
+- `test.zip` — extracted with password `mind2web`, producing
   `test_task/`, `test_website/`, `test_domain/`
+
+The archive stores those three splits **at its own root**, while the train split arrives as
+`data/train/`. Extraction therefore ends with a normalisation step that moves the loose
+`test_*` directories under `data/`, so every split ends up as `raw/data/<split>` — the only
+layout the loaders read. That step is idempotent and never overwrites an existing split, so
+re-running the command also repairs an older, mixed layout.
 
 ```bash
 uv run m2w-download              # both
 uv run m2w-download --skip-test  # train only
-uv run m2w-download --skip-train # test only
+uv run m2w-download --skip-train # test only (also repairs the split layout)
 uv run m2w-download --force      # re-download
 uv run m2w-download --dest D:\datasets\Mind2Web\raw
 ```
+
+The command ends by printing which splits are visible, e.g.
+`[download] splits available: train, test_task, test_website, test_domain` — if a split is
+missing there, `m2w-eda --all-splits` will silently skip it too.
 
 Default destination: `RAW_DIR` = `$MIND2WEB_DATA_DIR/raw` (default `./data/raw`).
 
