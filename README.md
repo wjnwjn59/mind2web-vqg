@@ -291,6 +291,28 @@ of steps containing each type; the **recorded targets** next to the tree with a 
 per category; and side aspects (input types, operations, task/step lengths, sites, candidate
 counts, repeated page states).
 
+### The EDA as a LaTeX report
+
+`eda.json` is for machines; the report is for a reader (and for the thesis appendix):
+
+```bash
+uv run m2w-eda-report --budget 20000    # -> outputs/eda/report/report.tex
+uv run m2w-eda-report --compile         # ... and report.pdf (needs latexmk/pdflatex)
+```
+
+Charts are `pgfplots` inside the `.tex`, so the output is **one self-contained file** — no
+figures directory, no extra Python dependency, no bitmaps to keep in sync. Contents: findings,
+corpus shape, element types (table + bars), the question-capable pool (table + concentration),
+tree vs recorded targets (lift table + log-log scatter), question potential per category,
+per-split drift, and a **sampling budget** that compares `share x N` with
+`min(labelled, N/n)` and reports how much of the budget the corpus cannot fill.
+
+`--budget` is the only knob that changes the recommendation: a budget larger than the corpus
+can supply shows up as a shortfall rather than as silently duplicated questions.
+
+If MiKTeX is not installed, the `.tex` is still written; compile it elsewhere (Overleaf works
+as-is — it ships `pgfplots`).
+
 ---
 
 ## 6. Running evaluation

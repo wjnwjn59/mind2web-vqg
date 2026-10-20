@@ -15,6 +15,7 @@ mind2web_vqg/
 ├── metrics.py         # question-quality metrics (offline) + round-trip answerability
 ├── report.py          # readable report of a run: report.md + report.html gallery
 ├── eda.py             # corpus EDA over the HTML tree (element types, targets, VQG yield)
+├── eda_report.py      # the EDA as a LaTeX report (tables + pgfplots charts, no dep)
 ├── smoke_vlm.py       # screenshot -> VLM smoke test (6 probes) -> outputs/smoke_vlm/
 ├── train.py           # fine-tuning skeleton (not implemented)
 │
@@ -168,6 +169,35 @@ What it counts, over `actions[*].cleaned_html` (or `--html raw`):
 `head`. An element is *labelled* when it has non-empty text or `aria-label`/`title`/`alt`/
 `placeholder` (plus `value` for input/button/option).
 
+### `eda_report.py`
+
+Turns the JSON that `m2w-eda` wrote into a LaTeX report — no new dependency, because the
+charts are `pgfplots` compiled into the document instead of bitmap files:
+
+```bash
+uv run m2w-eda-report --budget 20000          # -> outputs/eda/report/report.tex
+uv run m2w-eda-report --compile               # ... and report.pdf, if TeX is installed
+uv run m2w-eda-report --split test_task       # one split instead of the merged corpus
+```
+
+| Part | Content |
+| --- | --- |
+| Findings / corpus shape | the numbers a reader needs before any table |
+| Element types | top-20 table + bar chart |
+| Question-capable pool | table + pool-share bars + pool-share vs label-rate scatter |
+| Tree vs targets | lift table + log-log scatter against the `no bias` diagonal |
+| Potential per category | table + bar chart |
+| Drift between splits | per-split table + one small panel per split (only with 2+ splits) |
+| Sampling budget | `uncontrolled = share x N` versus `cap = min(labelled, N/n)`, plus the shortfall |
+| Method / reproducing | how the numbers were counted, how to regenerate them |
+
+Two things are computed here rather than in `eda.py`, because they are policy questions:
+`concentration()` (Herfindahl index, effective number of types, types needed for 50%/80% of
+the pool) and `policy_rows()` (what a biased sampler would emit versus an equal-share cap).
+
+Charts are small multiples and single-series axes on purpose: several `\addplot`s inside one
+`ybar` axis send pgfplots 1.18 into an infinite loop with `symbolic x coords`.
+
 ## Which file should you edit?
 
 | Goal | Edit |
@@ -177,6 +207,7 @@ What it counts, over `actions[*].cleaned_html` (or `--html raw`):
 | Add a new model backend | `models/` + `models/__init__.py::build_model` |
 | Change the prompt | `prompts/question_gen.json` / `prompts/__init__.py` |
 | Change the smoke-test probes | `smoke_vlm.py::PROBES` |
+| Change the EDA report layout | `eda_report.py` |
 | Change the data location | env var, not code |
 | Implement fine-tuning | `train.py` |
 

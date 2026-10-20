@@ -19,6 +19,8 @@ outputs/
 ├── eda/all/                 # every split merged into one corpus (same three files)
 ├── eda/summary.md           # cross-split comparison (only with `--all-splits`)
 ├── eda/summary.json
+├── eda/report/report.tex    # LaTeX report with pgfplots charts (`uv run m2w-eda-report`)
+├── eda/report/report.pdf    # ... plus the compiled PDF when TeX is installed (--compile)
 ├── render_check/<split>/    # written by `uv run m2w-render-html`
 │   ├── <id>_raw.jpg, <id>_cleaned.jpg, <id>_mm.jpg
 │   └── index.html           # side-by-side gallery, open this in a browser

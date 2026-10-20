@@ -104,6 +104,21 @@ These are smoke tests: fast, no data, no API calls, no GPU.
 | `test_render_summary_has_one_row_per_split_plus_all` | cross-split table with an `all` row |
 | `test_main_all_splits_writes_a_summary` | `--all-splits` end to end (per-split + merged + summary) |
 
+`test_eda_report.py` — the LaTeX report (`eda_report.py`); no TeX distribution required:
+
+| Test | Checks |
+| --- | --- |
+| `test_tex_escapes_every_special_character` / `test_tex_does_not_double_escape_*` | LaTeX escaping is single-pass (`\_`, `\%`, `\textbackslash{}`) |
+| `test_number_formatting` | thousands separators, `84.0` -> `84`, escaped `%` |
+| `test_concentration_of_an_even_pool` / `..._of_a_dominated_pool` | HHI, effective type count, types for 50%/80% |
+| `test_policy_*` | `share x N` vs `min(labelled, N/n)`, and the shortfall when the corpus is small |
+| `test_find_reports_separates_the_merged_report` | `all/` is returned separately from the splits |
+| `test_find_reports_explains_a_missing_directory` | the error names `m2w-eda` |
+| `test_render_tex_contains_every_section` / `..._has_valid_environments` | all sections, balanced `\begin`/`\end` |
+| `test_render_tex_embeds_a_chart_per_section` | >= 4 `axis` environments, figure labels present |
+| `test_render_tex_with_several_splits_adds_the_drift_section` | small multiples only with 2+ splits |
+| `test_main_writes_the_report` / `test_main_reports_an_unknown_split` | CLI end to end |
+
 `test_model_download.py` — the weights-download helpers (`models/download.py`):
 
 | Test | Checks |
