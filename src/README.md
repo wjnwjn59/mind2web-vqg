@@ -32,7 +32,7 @@ immediately — no reinstall needed.
 | `m2w-metrics` | `metrics.py:main` | ✅ works (offline + `--round-trip`) |
 | `m2w-report` | `report.py:main` | ✅ works (`report.md` + `report.html` gallery) |
 | `m2w-eda` | `eda.py:main` | ✅ works (HTML-tree EDA, `--all-splits`) |
-| `m2w-eda-report` | `eda_report.py:main` | ✅ works (LaTeX report with pgfplots charts) |
+| `m2w-eda-report` | `eda_report.py:main` | ✅ works (LaTeX report + matplotlib PNG charts) |
 | `m2w-train` | `train.py:main` | ❌ `NotImplementedError` |
 
 Run them with `uv run <command>` (no need to activate the venv).

@@ -15,7 +15,7 @@ mind2web_vqg/
 ├── metrics.py         # question-quality metrics (offline) + round-trip answerability
 ├── report.py          # readable report of a run: report.md + report.html gallery
 ├── eda.py             # corpus EDA over the HTML tree (element types, targets, VQG yield)
-├── eda_report.py      # the EDA as a LaTeX report (tables + pgfplots charts, no dep)
+├── eda_report.py      # the EDA as a LaTeX report (tables + matplotlib PNG charts)
 ├── smoke_vlm.py       # screenshot -> VLM smoke test (6 probes) -> outputs/smoke_vlm/
 ├── train.py           # fine-tuning skeleton (not implemented)
 │
@@ -171,22 +171,25 @@ What it counts, over `actions[*].cleaned_html` (or `--html raw`):
 
 ### `eda_report.py`
 
-Turns the JSON that `m2w-eda` wrote into a LaTeX report — no new dependency, because the
-charts are `pgfplots` compiled into the document instead of bitmap files:
+Turns the JSON that `m2w-eda` wrote into a LaTeX report. The charts are **PNG files** drawn
+with matplotlib (`uv sync --extra report`), so they can be looked at without a TeX
+distribution, and the `.tex` embeds them with `\includegraphics`:
 
 ```bash
-uv run m2w-eda-report --budget 20000          # -> outputs/eda/report/report.tex
+uv sync --extra report                        # once: matplotlib for the charts
+uv run m2w-eda-report --budget 20000          # -> outputs/eda/report/report.{tex,figures/}
 uv run m2w-eda-report --compile               # ... and report.pdf, if TeX is installed
 uv run m2w-eda-report --split test_task       # one split instead of the merged corpus
+uv run m2w-eda-report --no-figures            # tables only: no matplotlib, no images
 ```
 
 | Part | Content |
 | --- | --- |
 | Findings / corpus shape | the numbers a reader needs before any table |
-| Element types | top-20 table + bar chart |
+| Element types | top-20 table + log-scale bar chart |
 | Question-capable pool | table + pool-share bars + pool-share vs label-rate scatter |
 | Tree vs targets | lift table + log-log scatter against the `no bias` diagonal |
-| Potential per category | table + bar chart |
+| Potential per category | table + bar chart (log: the categories differ by orders of magnitude) |
 | Drift between splits | per-split table + one small panel per split (only with 2+ splits) |
 | Sampling budget | `uncontrolled = share x N` versus `cap = min(labelled, N/n)`, plus the shortfall |
 | Method / reproducing | how the numbers were counted, how to regenerate them |
@@ -195,8 +198,13 @@ Two things are computed here rather than in `eda.py`, because they are policy qu
 `concentration()` (Herfindahl index, effective number of types, types needed for 50%/80% of
 the pool) and `policy_rows()` (what a biased sampler would emit versus an equal-share cap).
 
-Charts are small multiples and single-series axes on purpose: several `\addplot`s inside one
-`ybar` axis send pgfplots 1.18 into an infinite loop with `symbolic x coords`.
+`render_tex()` never imports matplotlib: the caller passes a `{name: relative path}` mapping,
+and a name that is missing simply leaves that chart out. Reading a PNG requires nothing but
+the file; only `build_figures()` needs the extra, and it fails with a message that says so.
+
+Charts are single-series and use the log scale wherever the values span orders of magnitude
+(an element count next to a step count). Counts of zero cannot be drawn on a log axis, so a
+panel draws them as a floor stub and lets the number annotation carry the real value.
 
 ## Which file should you edit?
 

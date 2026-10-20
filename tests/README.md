@@ -130,9 +130,15 @@ These are smoke tests: fast, no data, no API calls, no GPU.
 | `test_find_reports_separates_the_merged_report` | `all/` is returned separately from the splits |
 | `test_find_reports_explains_a_missing_directory` | the error names `m2w-eda` |
 | `test_render_tex_contains_every_section` / `..._has_valid_environments` | all sections, balanced `\begin`/`\end` |
-| `test_render_tex_embeds_a_chart_per_section` | >= 4 `axis` environments, figure labels present |
+| `test_render_tex_has_tables_without_figures` | no `\includegraphics` when no figure mapping is passed |
+| `test_render_tex_embeds_a_chart_per_section` | one `\includegraphics` per figure, and only for the named sections |
 | `test_render_tex_with_several_splits_adds_the_drift_section` | small multiples only with 2+ splits |
-| `test_main_writes_the_report` / `test_main_reports_an_unknown_split` | CLI end to end |
+| `test_build_figures_writes_png_files` | six real PNGs (magic bytes) at the paths the `.tex` expects |
+| `test_build_figures_without_targets_still_draws_the_tree` | a chart is skipped, not faked, when it has no data |
+| `test_main_writes_the_report` / `test_main_renders_figures` / `test_main_reports_an_unknown_split` | CLI end to end, with and without charts |
+
+The chart tests call `pytest.importorskip("matplotlib")`, so a checkout without the `report`
+extra still runs the suite (it just skips them).
 
 `test_model_download.py` — the weights-download helpers (`models/download.py`):
 

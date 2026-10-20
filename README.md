@@ -296,22 +296,34 @@ counts, repeated page states).
 `eda.json` is for machines; the report is for a reader (and for the thesis appendix):
 
 ```bash
-uv run m2w-eda-report --budget 20000    # -> outputs/eda/report/report.tex
-uv run m2w-eda-report --compile         # ... and report.pdf (needs latexmk/pdflatex)
+uv sync --extra report                # once: the charts need matplotlib
+uv run m2w-eda-report --budget 20000   # -> outputs/eda/report/{report.tex,figures/fig_*.png}
+uv run m2w-eda-report --compile        # ... and report.pdf (needs latexmk/pdflatex)
 ```
 
-Charts are `pgfplots` inside the `.tex`, so the output is **one self-contained file** — no
-figures directory, no extra Python dependency, no bitmaps to keep in sync. Contents: findings,
-corpus shape, element types (table + bars), the question-capable pool (table + concentration),
-tree vs recorded targets (lift table + log-log scatter), question potential per category,
-per-split drift, and a **sampling budget** that compares `share x N` with
-`min(labelled, N/n)` and reports how much of the budget the corpus cannot fill.
+Charts are **PNG files** drawn with matplotlib into `outputs/eda/report/figures/`, and the
+`.tex` pulls them in with `\includegraphics`. That means the figures can be opened **without a
+TeX distribution** — useful on a server — while the document still compiles as usual (Overleaf
+works as-is). `--no-figures` emits the tables and text only and needs no extra dependency;
+passing `--compile` on a machine without `latexmk`/`pdflatex` still leaves the PNGs and the
+`.tex` in place.
+
+Two of the charts use a log scale, because the values they compare differ by orders of
+magnitude (an element count sits next to a step count). A zero has nowhere to start on a log
+axis, so such a bar is drawn as a stub at the floor with the real number printed next to it;
+a chart with nothing to show at all is left out instead of faked.
+
+Contents: findings, corpus shape, element types (table + log bars), the question-capable pool
+(table, bars + concentration), tree vs recorded targets (lift table + log-log scatter),
+question potential per category, per-split drift (small multiples), and a **sampling budget**
+that compares `share x N` with `min(labelled, N/n)` and reports how much of the budget the
+corpus cannot fill.
 
 `--budget` is the only knob that changes the recommendation: a budget larger than the corpus
 can supply shows up as a shortfall rather than as silently duplicated questions.
 
-If MiKTeX is not installed, the `.tex` is still written; compile it elsewhere (Overleaf works
-as-is — it ships `pgfplots`).
+If MiKTeX is not installed the PDF cannot be produced on that machine, but the `.tex` and the
+`figures/` are already written; upload the `report/` folder to Overleaf to get the PDF.
 
 ---
 

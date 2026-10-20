@@ -1,20 +1,22 @@
-"""A LaTeX report for the EDA: tables, findings and pgfplots charts in one ``.tex``.
+"""A LaTeX report for the EDA: tables, findings and PNG charts.
 
 Reads what ``m2w-eda`` already wrote (``outputs/eda/<split>/eda.json`` plus the merged
-``outputs/eda/all/eda.json``), derives the numbers a sampling policy needs, and emits a
-self-contained ``report.tex``:
+``outputs/eda/all/eda.json``), derives the numbers a sampling policy needs, and emits:
 
-- no extra dependency — charts are ``pgfplots``, not bitmaps, so the file is the only artefact;
-- every number comes from ``eda.json``, so the report can be regenerated from a finished run;
-- ``--compile`` runs ``latexmk``/``pdflatex`` when a TeX distribution is installed.
+- ``report.tex`` — the document (tables + ``\\includegraphics``);
+- ``figures/fig_*.png`` — the charts, drawn with matplotlib (``uv sync --extra report``).
+
+The PNGs are written before the document, so the charts can be opened without a TeX
+distribution; ``--compile`` additionally runs ``latexmk``/``pdflatex`` when one exists.
 
 Usage::
 
     uv run m2w-eda --all-splits --limit 0        # first: produce the JSON
-    uv run m2w-eda-report --compile              # -> outputs/eda/report/report.{tex,pdf}
+    uv run m2w-eda-report --compile              # -> outputs/eda/report/{report.tex,pdf,figures}
 
     uv run m2w-eda-report --budget 50000         # size the sampling table differently
     uv run m2w-eda-report --split test_task      # one split only
+    uv run m2w-eda-report --no-figures           # tables only, no matplotlib needed
 """
 
 from __future__ import annotations
@@ -23,7 +25,7 @@ import argparse
 import json
 import shutil
 import subprocess
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -206,12 +208,15 @@ def _table(
     return "\n".join(lines)
 
 
-def _figure(body: str, *, caption: str, label: str) -> str:
+def _figure(path: str | None, *, caption: str, label: str) -> str:
+    """A float around a PNG; returns ``""`` when the chart was not produced."""
+    if not path:
+        return ""
     return "\n".join(
         [
             r"\begin{figure}[H]",
             r"\centering",
-            body,
+            rf"\includegraphics[width=\linewidth]{{{path}}}",
             rf"\caption{{{caption}}}",
             rf"\label{{{label}}}",
             r"\end{figure}",
@@ -219,294 +224,245 @@ def _figure(body: str, *, caption: str, label: str) -> str:
     )
 
 
-def _yticklabels(names: Sequence[str]) -> str:
-    return ", ".join("{" + tag(name) + "}" for name in names)
+#: Colours shared by every chart: one accent for the data, one grey for reference lines.
+ACCENT = "#1F4E79"
+MUTED = "#6B6B6B"
+
+#: The three question categories, as the EDA JSON keys them and as a chart should label them.
+CATEGORY_KEYS = ("target_label", "element_type", "target_region")
+CATEGORY_LABELS = ("label", "type", "region")
+
+#: How many scatter points get a text label, and where those labels go.
+_LABELLED_POINTS = 7
+_LABEL_OFFSETS = ((5, 4), (5, -12), (-6, 5), (5, 12), (-6, -12), (5, -5), (-6, 12))
 
 
-def _tree_figure(result: dict[str, Any], top: int = 12) -> str:
+def _horizontal_bars(
+    ax, names: Sequence[str], values: Sequence[float], labels: Sequence[str], *, log: bool
+) -> None:
+    """One bar per category: the shape every counted chart in the report shares."""
+    bars = ax.barh(names, values, color=ACCENT, height=0.72)
+    if log:
+        ax.set_xscale("log")
+    ax.bar_label(bars, labels=list(labels), padding=2, fontsize=7)
+    ax.margins(x=0.22)
+    ax.grid(axis="y", visible=False)
+
+
+def _annotate(ax, points: Sequence[tuple[float, float, str]]) -> None:
+    """Label points, cycling the offset so neighbouring labels do not overprint."""
+    for index, (x, y, text) in enumerate(points):
+        ax.annotate(
+            text,
+            (x, y),
+            textcoords="offset points",
+            xytext=_LABEL_OFFSETS[index % len(_LABEL_OFFSETS)],
+            fontsize=7,
+            color=MUTED,
+            zorder=4,
+        )
+
+
+def _pyplot():
+    """Import matplotlib lazily, so the CLI still runs without the optional extra."""
+    try:
+        import matplotlib
+    except ModuleNotFoundError as error:  # pragma: no cover - depends on the install
+        raise RuntimeError(
+            "matplotlib is required to draw the report figures: run "
+            "`uv sync --extra report`, or pass --no-figures for tables only."
+        ) from error
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    plt.rcParams.update(
+        {
+            "figure.dpi": 200,
+            "savefig.dpi": 200,
+            "savefig.bbox": "tight",
+            "font.size": 9,
+            "axes.titlesize": 9.5,
+            "axes.labelsize": 9,
+            "axes.spines.top": False,
+            "axes.spines.right": False,
+            "axes.grid": True,
+            "axes.axisbelow": True,
+            "grid.alpha": 0.25,
+            "grid.linewidth": 0.6,
+            "xtick.labelsize": 8,
+            "ytick.labelsize": 8,
+            "legend.frameon": False,
+            "legend.fontsize": 8,
+        }
+    )
+    return plt
+
+
+def _chart_tree(plt, result: dict[str, Any], top: int = 12):
+    """Horizontal bars on a log x axis: the tree is heavy-tailed, so linear hides the tail."""
     rows = result["tags"][:top]
     if not rows:
-        return ""
-    coords = " ".join(f"({row['count']},{index})" for index, row in enumerate(rows, start=1))
-    body = "\n".join(
-        [
-            r"\begin{tikzpicture}",
-            r"\begin{axis}[",
-            r"  width=0.95\linewidth, height=7.2cm,",
-            r"  xbar, bar width=5pt, y dir=reverse,",
-            rf"  ytick={{1,...,{len(rows)}}},",
-            rf"  yticklabels={{{_yticklabels([row['tag'] for row in rows])}}},",
-            r"  yticklabel style={font=\scriptsize}, xticklabel style={font=\scriptsize},",
-            rf"  ymin=0.4, ymax={len(rows) + 0.6},",
-            r"  xmin=0,",
-            r"  xlabel={elements in the tree},",
-            r"  nodes near coords,",
-            r"  nodes near coords style={font=\tiny, anchor=south},",
-            r"  every axis plot/.append style={fill=accent!55, draw=none},",
-            r"]",
-            rf"\addplot coordinates {{{coords}}};",
-            r"\end{axis}",
-            r"\end{tikzpicture}",
-        ]
-    )
-    return _figure(
-        body,
-        caption=(
-            f"The {len(rows)} most frequent element types in "
-            f"{tag(result['html_field'])}. A linear axis keeps the head of the distribution "
-            "honest: an uncontrolled sampler would reproduce exactly this shape."
-        ),
-        label="fig:tree",
-    )
+        return None
+    names = [row["tag"] for row in rows][::-1]
+    counts = [row["count"] for row in rows][::-1]
+
+    figure, ax = plt.subplots(figsize=(6.6, 3.3))
+    _horizontal_bars(ax, names, counts, [f"{count:,}" for count in counts], log=True)
+    ax.set_xlabel("elements in the tree (log scale)")
+    return figure
 
 
-def _pool_figure(result: dict[str, Any], top: int = 10) -> str:
+def _chart_pool(plt, result: dict[str, Any], top: int = 10):
     rows = result["questionable"][:top]
     if not rows:
-        return ""
-    coords = " ".join(
-        f"({row['share_of_questionable'] * 100:.3f},{index})"
-        for index, row in enumerate(rows, start=1)
-    )
-    body = "\n".join(
-        [
-            r"\begin{tikzpicture}",
-            r"\begin{axis}[",
-            r"  width=0.95\linewidth, height=6.4cm,",
-            r"  xbar, bar width=5pt, y dir=reverse,",
-            rf"  ytick={{1,...,{len(rows)}}},",
-            rf"  yticklabels={{{_yticklabels([row['tag'] for row in rows])}}},",
-            r"  yticklabel style={font=\scriptsize}, xticklabel style={font=\scriptsize},",
-            rf"  ymin=0.4, ymax={len(rows) + 0.6},",
-            r"  xlabel={share of the question-capable pool (\%)},",
-            r"  nodes near coords,",
-            r"  nodes near coords={\pgfmathprintnumber[fixed,precision=1]{\pgfplotspointmeta}},",
-            r"  nodes near coords style={font=\tiny, anchor=south},",
-            r"  every axis plot/.append style={fill=accent!55, draw=none},",
-            r"]",
-            rf"\addplot coordinates {{{coords}}};",
-            r"\end{axis}",
-            r"\end{tikzpicture}",
-        ]
-    )
-    return _figure(
-        body,
-        caption=(
-            "Composition of the question-capable pool. Every element of these types can carry "
-            "an \\texttt{element\\_type} question; the leader is the type a naive sampler "
-            "over-produces."
-        ),
-        label="fig:pool",
-    )
+        return None
+    names = [row["tag"] for row in rows][::-1]
+    shares = [row["share_of_questionable"] * 100 for row in rows][::-1]
+
+    figure, ax = plt.subplots(figsize=(6.6, 2.9))
+    _horizontal_bars(ax, names, shares, [f"{share:.1f}" for share in shares], log=False)
+    ax.set_xlabel("share of the question-capable pool (%)")
+    return figure
 
 
-def _label_figure(result: dict[str, Any]) -> str:
-    rows = [row for row in result["questionable"] if row["count"] > 0]
-    if not rows:
-        return ""
-    coords = " ".join(
-        f"({row['share_of_questionable'] * 100:.3f},{row['label_rate'] * 100:.3f})"
-        for row in rows
-    )
-    nodes = "\n".join(
-        rf"\node[font=\tiny, anchor=south west, text=black!70] at "
-        rf"(axis cs:{row['share_of_questionable'] * 100:.3f},"
-        rf"{row['label_rate'] * 100:.3f}) {{{tag(row['tag'])}}};"
-        for row in rows[:_LABELLED_POINTS]
-    )
-    # Fit the x axis to the data: a fixed 0-100 range squeezes every point into the corner.
-    xmax = max(row["share_of_questionable"] for row in rows) * 100 * 1.15
-    body = "\n".join(
-        [
-            r"\begin{tikzpicture}",
-            r"\begin{axis}[",
-            r"  width=0.95\linewidth, height=7.0cm,",
-            r"  only marks, mark=*, mark size=1.6pt, color=accent,",
-            r"  xlabel={share of the question-capable pool (\%)},",
-            r"  ylabel={elements with a label (\%)},",
-            rf"  xmin=0, xmax={xmax:.2f}, ymin=0, ymax=105,",
-            r"  grid=major, grid style={black!12},",
-            r"  ticklabel style={font=\scriptsize}, label style={font=\small},",
-            r"]",
-            rf"\addplot coordinates {{{coords}}};",
-            nodes,
-            r"\end{axis}",
-            r"\end{tikzpicture}",
-        ]
-    )
-    return _figure(
-        body,
-        caption=(
-            "Pool share against label availability. Points high on the y axis are cheap "
-            "\\texttt{target\\_label} questions; points on the right are the types that would "
-            "dominate without a cap."
-        ),
-        label="fig:label",
-    )
+def _chart_label(plt, result: dict[str, Any]):
+    """Pool share against label availability: cheap questions sit high, biased types right."""
+    points = [
+        (row["share_of_questionable"] * 100, row["label_rate"] * 100, row["tag"])
+        for row in result["questionable"]
+        if row["count"] > 0
+    ]
+    if not points:
+        return None
+
+    figure, ax = plt.subplots(figsize=(6.6, 3.2))
+    ax.scatter([x for x, _, _ in points], [y for _, y, _ in points], s=26, color=ACCENT, zorder=3)
+    _annotate(ax, points[:_LABELLED_POINTS])
+    ax.set_xlabel("share of the question-capable pool (%)")
+    ax.set_ylabel("elements with a label (%)")
+    ax.set_xlim(0, max(x for x, _, _ in points) * 1.18)
+    ax.set_ylim(0, 105)
+    return figure
 
 
-def _lift_figure(result: dict[str, Any]) -> str:
+def _chart_lift(plt, result: dict[str, Any]):
+    """Log-log scatter against the no-bias diagonal (both axes share one range)."""
     rows = [row for row in result["targets"]["tags"] if row["tree_share"] > 0]
     if not rows:
-        return ""
-    coords = " ".join(f"({row['tree_share']:.5f},{row['share']:.5f})" for row in rows)
+        return None
+    shares = [row["tree_share"] for row in rows] + [row["share"] for row in rows]
+    low, high = max(min(shares) / 1.5, 1e-6), max(shares) * 1.5
     ranked = sorted(rows, key=lambda row: row["lift"] or 0, reverse=True)
-    nodes = "\n".join(
-        rf"\node[font=\tiny, anchor=south west, text=black!70] at "
-        rf"(axis cs:{row['tree_share']:.5f},{row['share']:.5f}) {{{tag(row['tag'])}}};"
-        for row in ranked[:_LABELLED_POINTS]
+
+    figure, ax = plt.subplots(figsize=(6.6, 3.4))
+    ax.plot([low, high], [low, high], linestyle="--", color=MUTED, linewidth=0.9, label="no bias")
+    ax.scatter(
+        [row["tree_share"] for row in rows],
+        [row["share"] for row in rows],
+        s=26,
+        color=ACCENT,
+        zorder=3,
+        label="recorded targets",
     )
-    # One shared range for both axes keeps the dashed line a true y = x; derive it from the
-    # data so the points are not squeezed into a 1e-4 .. 1e0 corner.
-    values = [value for row in rows for value in (row["tree_share"], row["share"])]
-    low = max(min(values) / 3, 1e-6)
-    high = max(values) * 3
-    body = "\n".join(
-        [
-            r"\begin{tikzpicture}",
-            r"\begin{axis}[",
-            r"  width=0.95\linewidth, height=7.4cm,",
-            r"  xmode=log, ymode=log,",
-            r"  xlabel={share of the tree (log)}, ylabel={share of recorded targets (log)},",
-            rf"  xmin={low:.6f}, xmax={high:.6f}, ymin={low:.6f}, ymax={high:.6f},",
-            r"  grid=major, grid style={black!12},",
-            r"  ticklabel style={font=\scriptsize}, label style={font=\small},",
-            r"  legend pos=north west, legend style={font=\scriptsize},",
-            r"]",
-            rf"\addplot[dashed, draw=black!55, domain={low:.6f}:{high:.6f}] {{x}};",
-            r"\addlegendentry{no bias}",
-            r"\addplot[only marks, mark=*, mark size=1.6pt, color=accent] "
-            rf"coordinates {{{coords}}};",
-            r"\addlegendentry{recorded targets}",
-            nodes,
-            r"\end{axis}",
-            r"\end{tikzpicture}",
-        ]
+    _annotate(
+        ax,
+        [(row["tree_share"], row["share"], row["tag"]) for row in ranked[:_LABELLED_POINTS]],
     )
-    return _figure(
-        body,
-        caption=(
-            "Recorded targets against the tree. Above the dashed line the agent uses a type "
-            "more often than the tree suggests (the task forces it); below the line the tree "
-            "is full of it but it rarely matters."
-        ),
-        label="fig:lift",
-    )
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_xlim(low, high)
+    ax.set_ylim(low, high)
+    ax.set_xlabel("share of the tree (log)")
+    ax.set_ylabel("share of recorded targets (log)")
+    ax.legend(loc="upper left")
+    return figure
 
 
-def _potential_figure(result: dict[str, Any]) -> str:
-    potential = result["potential"]
-    coords = " ".join(
-        [
-            f"(label,{potential['target_label']})",
-            f"(type,{potential['element_type']})",
-            f"(region,{potential['target_region']})",
-        ]
+def _chart_potential(plt, result: dict[str, Any]):
+    """Three counts that differ by orders of magnitude: a log axis is the only honest one."""
+    values = [result["potential"][key] for key in CATEGORY_KEYS]
+    if not any(values):
+        return None
+
+    figure, ax = plt.subplots(figsize=(6.2, 2.3))
+    _horizontal_bars(
+        ax, list(CATEGORY_LABELS)[::-1], values[::-1], [f"{value:,}" for value in values[::-1]],
+        log=True,
     )
-    body = "\n".join(
-        [
-            r"\begin{tikzpicture}",
-            r"\begin{axis}[",
-            r"  width=0.8\linewidth, height=5.6cm,",
-            r"  ybar, bar width=18pt,",
-            r"  symbolic x coords={label,type,region}, xtick=data,",
-            r"  xticklabels={{label},{type},{region}},",
-            r"  xticklabel style={font=\small}, yticklabel style={font=\scriptsize},",
-            r"  ylabel={questions available}, ymin=0,",
-            r"  nodes near coords,",
-            r"  nodes near coords={\pgfmathprintnumber[fixed,precision=0]{\pgfplotspointmeta}},",
-            r"  nodes near coords style={font=\scriptsize},",
-            r"  every axis plot/.append style={fill=accent!55, draw=none},",
-            r"]",
-            rf"\addplot coordinates {{{coords}}};",
-            r"\end{axis}",
-            r"\end{tikzpicture}",
-        ]
+    ax.set_xlabel("questions the corpus can support (log scale)")
+    return figure
+
+
+def _per_1000_steps(result: dict[str, Any]) -> list[float]:
+    """Questions per 1000 steps per category: splits differ in size, so rates compare."""
+    scale = 1000 / result["steps"] if result["steps"] else 0.0
+    return [result["potential"][key] * scale for key in CATEGORY_KEYS]
+
+
+def _chart_splits(plt, splits: dict[str, dict[str, Any]]):
+    """One panel per split (never several series in one axis: pgfplots used to loop on that)."""
+    series = {name: _per_1000_steps(result) for name, result in splits.items()}
+    positive = [value for values in series.values() for value in values if value > 0]
+    if len(splits) < 2 or not positive:
+        return None
+    columns = 2
+    rows = (len(splits) + 1) // 2
+    figure, axes = plt.subplots(
+        rows, columns, figsize=(6.6, 2.3 * rows), squeeze=False, sharey=True
     )
-    return _figure(
-        body,
-        caption=(
-            "Questions the tree can support, by category. \\texttt{region} is bounded by the "
-            "recorded targets (the tree carries no coordinates); the other two by the elements "
-            "themselves."
-        ),
-        label="fig:potential",
-    )
+    # On a log axis a zero bar has nowhere to start, so it is drawn as a stub at the floor
+    # and the annotation carries the real number.
+    floor = min(positive) / 3
 
-
-def _split_figure(splits: dict[str, dict[str, Any]]) -> str:
-    """One small single-series panel per split.
-
-    Deliberately *not* a grouped bar chart: several ``\\addplot``s inside one ``ybar`` axis
-    send pgfplots 1.18 into an infinite loop with ``symbolic x coords`` (verified: one plot
-    compiles, two do not). Small multiples avoid the construct entirely.
-    """
-    if len(splits) < 2:
-        return ""
-
-    panels = []
-    for name, result in splits.items():
-        scale = 1000 / result["steps"] if result["steps"] else 0.0
-        coords = " ".join(
-            [
-                f"(label,{result['potential']['target_label'] * scale:.2f})",
-                f"(type,{result['potential']['element_type'] * scale:.2f})",
-                f"(region,{result['potential']['target_region'] * scale:.2f})",
-            ]
+    for index, (name, values) in enumerate(series.items()):
+        ax = axes[index // columns][index % columns]
+        bars = ax.bar(
+            CATEGORY_LABELS, [value or floor for value in values], color=ACCENT, width=0.55
         )
-        panels.append(
-            "\n".join(
-                [
-                    r"\begin{tikzpicture}",
-                    r"\begin{axis}[",
-                    r"  width=\linewidth, height=4.4cm,",
-                    r"  ybar, bar width=13pt,",
-                    r"  symbolic x coords={label,type,region}, xtick=data,",
-                    r"  xticklabels={{label},{type},{region}},",
-                    rf"  title={{{tag(name)}}},",
-                    r"  title style={font=\small},",
-                    r"  xticklabel style={font=\scriptsize},",
-                    r"  yticklabel style={font=\tiny},",
-                    r"  ylabel={per 1000 steps}, ylabel style={font=\scriptsize}, ymin=0,",
-                    r"  scaled y ticks=false,",
-                    r"  yticklabel={\pgfmathprintnumber[fixed,precision=0]{\tick}},",
-                    r"  every axis plot/.append style={fill=accent!55, draw=none},",
-                    r"]",
-                    rf"\addplot coordinates {{{coords}}};",
-                    r"\end{axis}",
-                    r"\end{tikzpicture}",
-                ]
-            )
-        )
+        ax.bar_label(bars, labels=[f"{value:,.0f}" for value in values], padding=2, fontsize=7)
+        ax.set_yscale("log")
+        ax.set_title(name, fontsize=8.5)
+        ax.grid(axis="x", visible=False)
+        if index % columns == 0:
+            ax.set_ylabel("per 1000 steps (log)", fontsize=8)
 
-    rows = []
-    for index in range(0, len(panels), 2):
-        pair = panels[index : index + 2]
-        cells = [
-            r"\begin{minipage}[t]{0.48\linewidth}",
-            r"\centering",
-            pair[0],
-            r"\end{minipage}",
-        ]
-        if len(pair) > 1:
-            cells += [
-                r"\hfill",
-                r"\begin{minipage}[t]{0.48\linewidth}",
-                r"\centering",
-                pair[1],
-                r"\end{minipage}",
-            ]
-        rows.append("\n".join(cells))
+    axes[0][0].set_ylim(floor / 3, max(positive) * 3)
+    for index in range(len(splits), rows * columns):
+        axes[index // columns][index % columns].set_visible(False)
 
-    return _figure(
-        "\n\n".join(rows),
-        caption=(
-            "Question yield per 1000 steps, split by split. Normalising by steps makes splits "
-            "of different sizes comparable: an uneven panel means the same sampler would "
-            "behave differently on each test set."
-        ),
-        label="fig:splits",
-    )
+    figure.tight_layout()
+    return figure
+
+
+def build_figures(
+    result: dict[str, Any],
+    splits: dict[str, dict[str, Any]],
+    directory: str | Path,
+) -> dict[str, str]:
+    """Render every chart to ``<directory>/fig_<name>.png``; return ``name -> relative path``."""
+    plt = _pyplot()
+    directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=True)
+
+    charts = {
+        "tree": _chart_tree(plt, result),
+        "pool": _chart_pool(plt, result),
+        "label": _chart_label(plt, result),
+        "lift": _chart_lift(plt, result),
+        "potential": _chart_potential(plt, result),
+        "splits": _chart_splits(plt, splits),
+    }
+
+    figures: dict[str, str] = {}
+    for name, chart in charts.items():
+        if chart is None:
+            continue
+        path = directory / f"fig_{name}.png"
+        chart.savefig(path)
+        plt.close(chart)
+        figures[name] = f"figures/{path.name}"
+    return figures
 
 
 # --------------------------------------------------------------------------- #
@@ -521,10 +477,7 @@ def _preamble(title: str) -> str:
             r"\usepackage{lmodern}",
             r"\usepackage{booktabs,array}",
             r"\usepackage{amsmath}",
-            r"\usepackage{pgfplots}",
-            r"\pgfplotsset{compat=1.18}",
-            r"\usepackage{xcolor}",
-            r"\definecolor{accent}{HTML}{1F4E79}",
+            r"\usepackage{graphicx}",
             r"\usepackage{caption}",
             r"\captionsetup{font=small,labelfont=bf}",
             r"\usepackage{float}",
@@ -629,7 +582,9 @@ def _corpus_section(result: dict[str, Any]) -> str:
     )
 
 
-def _types_section(result: dict[str, Any], top: int = 20) -> str:
+def _types_section(
+    result: dict[str, Any], figures: Mapping[str, str] | None = None, top: int = 20
+) -> str:
     rows = [
         [tag(row["tag"]), num(row["count"]), pct(row["share"]), num(row["steps"]),
          pct(row["step_share"])]
@@ -655,13 +610,23 @@ def _types_section(result: dict[str, Any], top: int = 20) -> str:
                 ),
                 label="tab:types",
             ),
-            _tree_figure(result),
+            _figure(
+                (figures or {}).get("tree"),
+                caption=(
+                    f"The {min(top, len(result['tags']))} most frequent element types in "
+                    f"{tag(result['html_field'])}. The log axis keeps the tail readable: an "
+                    "uncontrolled sampler would reproduce exactly this shape."
+                ),
+                label="fig:tree",
+            ),
             note,
         ]
     )
 
 
-def _pool_section(result: dict[str, Any], top: int = 14) -> str:
+def _pool_section(
+    result: dict[str, Any], figures: Mapping[str, str] | None = None, top: int = 14
+) -> str:
     rows = result["questionable"]
     if not rows:
         return r"\section{Question-capable pool}" + "\n\nNo question-capable elements found."
@@ -700,13 +665,31 @@ def _pool_section(result: dict[str, Any], top: int = 14) -> str:
                 ),
                 label="tab:pool",
             ),
-            _pool_figure(result),
-            _label_figure(result),
+            _figure(
+                (figures or {}).get("pool"),
+                caption=(
+                    "Composition of the question-capable pool. Every element of these types can "
+                    "carry an \\texttt{element\\_type} question; the leader is the type a naive "
+                    "sampler over-produces."
+                ),
+                label="fig:pool",
+            ),
+            _figure(
+                (figures or {}).get("label"),
+                caption=(
+                    "Pool share against label availability. Points high on the y axis are cheap "
+                    "\\texttt{target\\_label} questions; points on the right are the types that "
+                    "would dominate without a cap."
+                ),
+                label="fig:label",
+            ),
         ]
     )
 
 
-def _lift_section(result: dict[str, Any], top: int = 12) -> str:
+def _lift_section(
+    result: dict[str, Any], figures: Mapping[str, str] | None = None, top: int = 12
+) -> str:
     rows = result["targets"]["tags"]
     if not rows:
         return r"\section{Tree versus recorded targets}" + "\n\nNo recorded targets found."
@@ -738,12 +721,22 @@ def _lift_section(result: dict[str, Any], top: int = 12) -> str:
                 ),
                 label="tab:lift",
             ),
-            _lift_figure(result),
+            _figure(
+                (figures or {}).get("lift"),
+                caption=(
+                    "Recorded targets against the tree. Above the dashed line the agent uses a "
+                    "type more often than the tree suggests (the task forces it); below the line "
+                    "the tree is full of it but it rarely matters."
+                ),
+                label="fig:lift",
+            ),
         ]
     )
 
 
-def _potential_section(result: dict[str, Any]) -> str:
+def _potential_section(
+    result: dict[str, Any], figures: Mapping[str, str] | None = None
+) -> str:
     potential = result["potential"]
     rows = [
         [
@@ -772,12 +765,25 @@ def _potential_section(result: dict[str, Any]) -> str:
                 caption="Upper bound of questions of each kind, given this corpus.",
                 label="tab:potential",
             ),
-            _potential_figure(result),
+            _figure(
+                (figures or {}).get("potential"),
+                caption=(
+                    "Questions the tree can support, by category, on a log axis because the "
+                    "three differ by orders of magnitude. \\texttt{region} is bounded by "
+                    "the recorded targets (the tree carries no coordinates); the other two by the "
+                    "elements themselves."
+                ),
+                label="fig:potential",
+            ),
         ]
     )
 
 
-def _split_section(splits: dict[str, dict[str, Any]], merged: dict[str, Any]) -> str:
+def _split_section(
+    splits: dict[str, dict[str, Any]],
+    merged: dict[str, Any],
+    figures: Mapping[str, str] | None = None,
+) -> str:
     if len(splits) < 2:
         return ""
     rows = []
@@ -831,7 +837,15 @@ def _split_section(splits: dict[str, dict[str, Any]], merged: dict[str, Any]) ->
                 caption="Per-split shape. Rates are shares of recorded steps.",
                 label="tab:splits",
             ),
-            _split_figure(splits),
+            _figure(
+                (figures or {}).get("splits"),
+                caption=(
+                    "Question yield per 1000 steps, split by split. Normalising by steps makes "
+                    "splits of different sizes comparable: an uneven panel means the same "
+                    "sampler would behave differently on each test set."
+                ),
+                label="fig:splits",
+            ),
         ]
     )
 
@@ -933,8 +947,14 @@ def render_tex(
     budget: int = 20_000,
     root: str | Path = OUTPUT_DIR / "eda",
     title: str | None = None,
+    figures: Mapping[str, str] | None = None,
 ) -> str:
-    """Render the whole report as one LaTeX document."""
+    """Render the whole report as one LaTeX document.
+
+    ``figures`` maps a chart name (``tree``, ``pool``, ``label``, ``lift``, ``potential``,
+    ``splits``) to the image path *relative to the report directory*; a missing name simply
+    leaves that chart out.
+    """
     splits = splits or {}
     corpus = merged or subject
     heading = title or f"Mind2Web: what the HTML tree contains ({corpus['split']})"
@@ -943,11 +963,11 @@ def render_tex(
         _preamble(heading),
         _findings(corpus),
         _corpus_section(corpus),
-        _types_section(corpus),
-        _pool_section(corpus),
-        _lift_section(corpus),
-        _potential_section(corpus),
-        _split_section(splits, corpus),
+        _types_section(corpus, figures),
+        _pool_section(corpus, figures),
+        _lift_section(corpus, figures),
+        _potential_section(corpus, figures),
+        _split_section(splits, corpus, figures),
         _policy_section(corpus, budget),
         _method_section(corpus),
         _reproduce_section(root),
@@ -1019,7 +1039,7 @@ def compile_pdf(tex_path: str | Path, *, timeout: int = 300) -> Path | None:
 def main(argv: list[str] | None = None) -> int:
     ensure_utf8()
     parser = argparse.ArgumentParser(
-        description="Turn the EDA JSON into a LaTeX report with pgfplots charts."
+        description="Turn the EDA JSON into a LaTeX report with PNG charts."
     )
     parser.add_argument(
         "--root", type=Path, default=OUTPUT_DIR / "eda", help="where m2w-eda wrote its output"
@@ -1034,6 +1054,9 @@ def main(argv: list[str] | None = None) -> int:
         "--budget", type=int, default=20_000, help="questions to spread in the policy table"
     )
     parser.add_argument("--title", default=None, help="document title")
+    parser.add_argument(
+        "--no-figures", action="store_true", help="tables only: skip matplotlib and the charts"
+    )
     parser.add_argument("--compile", action="store_true", help="run latexmk/pdflatex afterwards")
     args = parser.parse_args(argv)
 
@@ -1056,6 +1079,17 @@ def main(argv: list[str] | None = None) -> int:
             print(f"[eda-report] no report under {args.root}")
             return 1
 
+    out_dir = args.out or Path(args.root) / "report"
+    figures: dict[str, str] = {}
+    if not args.no_figures:
+        try:
+            figures = build_figures(subject, splits, out_dir / "figures")
+        except RuntimeError as error:
+            print(f"[eda-report] {error}")
+            return 1
+        for path in figures.values():
+            print(f"[eda-report] {path}")
+
     document = render_tex(
         subject,
         splits=splits,
@@ -1063,15 +1097,22 @@ def main(argv: list[str] | None = None) -> int:
         budget=args.budget,
         root=args.root,
         title=args.title,
+        figures=figures,
     )
-    out_dir = args.out or Path(args.root) / "report"
     tex_path = write_report(document, out_dir)
     print(f"[eda-report] {tex_path}")
 
+    if args.no_figures:
+        print("[eda-report] --no-figures: the report has tables and text, no charts")
     if args.compile:
         pdf = compile_pdf(tex_path)
         if pdf:
             print(f"[eda-report] {pdf}")
+    elif not args.no_figures:
+        print(
+            "[eda-report] charts are PNG files in figures/ (open them directly); "
+            "add --compile, or upload the folder, to get the PDF"
+        )
     return 0
 
 

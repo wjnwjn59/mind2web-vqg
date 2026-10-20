@@ -3,6 +3,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from mind2web_vqg.eda import summarize, write_report
 from mind2web_vqg.eda_report import (
     concentration,
@@ -197,22 +199,42 @@ def test_render_tex_has_valid_environments() -> None:
     assert document.count(r"\begin{") == document.count(r"\end{")
 
 
-def test_render_tex_embeds_a_chart_per_section() -> None:
+def test_render_tex_has_tables_without_figures() -> None:
     document = render_tex(sample_result())
-    assert document.count(r"\begin{axis}") >= 4
+    assert r"\includegraphics" not in document
+    assert r"\label{fig:tree}" not in document
+    assert r"\label{tab:policy}" in document
+    assert r"\section{Element types}" in document
+
+
+def test_render_tex_embeds_a_chart_per_section() -> None:
+    figures = {
+        "tree": "figures/fig_tree.png",
+        "pool": "figures/fig_pool.png",
+        "label": "figures/fig_label.png",
+        "lift": "figures/fig_lift.png",
+        "potential": "figures/fig_potential.png",
+    }
+    document = render_tex(sample_result(), figures=figures)
+
+    assert document.count(r"\includegraphics") == len(figures)
+    # The exact form matters: the document must point at the file that sits next to it.
+    assert r"\includegraphics[width=\linewidth]{figures/fig_tree.png}" in document
+    for name in figures:
+        assert f"figures/fig_{name}.png" in document, name
     assert r"\label{fig:tree}" in document
     assert r"\label{fig:lift}" in document
-    assert r"\label{tab:policy}" in document
 
 
 def test_render_tex_with_several_splits_adds_the_drift_section() -> None:
     splits = {"train": sample_result("train"), "test_task": sample_result("test_task")}
     merged = sample_result("all")
-    document = render_tex(merged, splits=splits, merged=merged)
+    document = render_tex(
+        merged, splits=splits, merged=merged, figures={"splits": "figures/fig_splits.png"}
+    )
     assert r"\section{Drift between splits}" in document
     assert r"\label{fig:splits}" in document
-    # Small multiples: one axis per split, never several series in one axis
-    assert document.count(r"\begin{axis}") >= 6
+    assert r"\includegraphics[width=\linewidth]{figures/fig_splits.png}" in document
 
 
 def test_render_tex_with_one_split_skips_the_drift_section() -> None:
@@ -234,18 +256,67 @@ def test_write_tex_creates_the_directory(tmp_path: Path) -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Charts
+# --------------------------------------------------------------------------- #
+def test_build_figures_writes_png_files(tmp_path: Path) -> None:
+    pytest.importorskip("matplotlib")
+    from mind2web_vqg.eda_report import build_figures
+
+    splits = {"train": sample_result("train"), "test_task": sample_result("test_task")}
+    figures = build_figures(sample_result("all"), splits, tmp_path / "figures")
+
+    assert set(figures) == {"tree", "pool", "label", "lift", "potential", "splits"}
+    for name, relative in figures.items():
+        assert relative == f"figures/fig_{name}.png"
+        path = tmp_path / relative
+        assert path.is_file(), name
+        assert path.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+        assert path.stat().st_size > 1000
+
+
+def test_build_figures_without_targets_still_draws_the_tree(tmp_path: Path) -> None:
+    pytest.importorskip("matplotlib")
+    from mind2web_vqg.eda_report import build_figures
+
+    result = sample_result("train")
+    result["targets"]["tags"] = []
+    result["potential"] = {"target_label": 0, "element_type": 0, "target_region": 0}
+
+    figures = build_figures(result, {}, tmp_path / "figures")
+
+    assert "tree" in figures
+    assert "splits" not in figures  # needs 2+ splits
+    assert not (tmp_path / "figures" / "fig_lift.png").exists()
+
+
+# --------------------------------------------------------------------------- #
 # CLI
 # --------------------------------------------------------------------------- #
-def test_main_writes_the_report(tmp_path: Path) -> None:
+def test_main_writes_the_report(tmp_path: Path, capsys) -> None:
     write_report(sample_result("train"), tmp_path / "eda" / "train")
     write_report(sample_result("test_task"), tmp_path / "eda" / "test_task")
     write_report(sample_result("all"), tmp_path / "eda" / "all")
 
-    code = main(["--root", str(tmp_path / "eda"), "--budget", "500"])
+    code = main(["--root", str(tmp_path / "eda"), "--budget", "500", "--no-figures"])
     assert code == 0
     report = (tmp_path / "eda" / "report" / "report.tex").read_text(encoding="utf-8")
     assert r"\section{Drift between splits}" in report
     assert "500" in report
+    assert "--no-figures" in capsys.readouterr().out
+
+
+def test_main_renders_figures(tmp_path: Path, capsys) -> None:
+    pytest.importorskip("matplotlib")
+    write_report(sample_result("all"), tmp_path / "eda" / "all")
+
+    assert main(["--root", str(tmp_path / "eda")]) == 0
+
+    out = capsys.readouterr().out
+    assert "figures/fig_tree.png" in out
+    assert "--compile" in out
+    report = (tmp_path / "eda" / "report" / "report.tex").read_text(encoding="utf-8")
+    assert r"\includegraphics[width=\linewidth]{figures/fig_tree.png}" in report
+    assert (tmp_path / "eda" / "report" / "figures" / "fig_lift.png").is_file()
 
 
 def test_main_reports_an_unknown_split(tmp_path: Path) -> None:
