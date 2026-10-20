@@ -12,6 +12,12 @@ outputs/
 │   ├── metrics.json         # offline question-quality metrics (see below)
 │   ├── report.md            # readable report of the run (`uv run m2w-report`)
 │   └── report.html          # screenshot gallery of the run
+├── eda/<split>/             # written by `uv run m2w-eda`
+│   ├── eda.md               # element-type / target / yield tables + findings
+│   ├── eda.json             # the same numbers, machine-readable
+│   └── tags.csv             # one row per HTML tag (for plotting)
+├── eda/summary.md           # cross-split comparison (only with `--all-splits`)
+├── eda/summary.json
 ├── render_check/<split>/    # written by `uv run m2w-render-html`
 │   ├── <id>_raw.jpg, <id>_cleaned.jpg, <id>_mm.jpg
 │   └── index.html           # side-by-side gallery, open this in a browser

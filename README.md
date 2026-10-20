@@ -261,6 +261,30 @@ Each line is `{id, input, target, answer, image, meta}`: `input` is the generati
 A category whose answer is missing for a row (no label, unmapped tag, off-page box) is
 skipped, so every emitted example stays answerable.
 
+### EDA — what the data actually contains
+
+Before synthesizing questions from the whole page tree, measure its class balance: the tags
+that dominate the tree will dominate the generated data.
+
+```bash
+uv run m2w-eda --split test_task --limit 200   # first 200 tasks of one split
+uv run m2w-eda --split train --limit 0         # the whole split (0 = no limit)
+uv run m2w-eda --all-splits --limit 0          # every downloaded split + comparison
+
+# -> outputs/eda/<split>/{eda.md,eda.json,tags.csv}
+#    outputs/eda/{summary.md,summary.json}     (only with --all-splits)
+```
+
+Parsing is CPU-bound (pure-Python HTML parser): expect minutes per split and ~10-30 min
+for everything, so run the full pass inside `screen`. The per-split report answers "which
+types dominate"; `summary.md` answers "do the splits differ".
+
+It parses `actions[*].cleaned_html` and reports: the element-type distribution and the share
+of steps containing each type; the **recorded targets** next to the tree with a `lift` column
+(target share / tree share) so a type the agent is forced to use shows up; the VQG potential
+per category; and side aspects (input types, operations, task/step lengths, sites, candidate
+counts, repeated page states).
+
 ---
 
 ## 6. Running evaluation

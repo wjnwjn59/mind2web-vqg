@@ -14,6 +14,7 @@ Each JSON file is a list of instances; see the README for the field descriptions
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -34,15 +35,17 @@ def _iter_json_files(split_dir: Path) -> list[Path]:
     return sorted(split_dir.glob("*.json"))
 
 
-def load_split(split: str, root: str | Path = DEFAULT_ROOT) -> list[dict[str, Any]]:
-    """Load one split as a list of instances.
+def available_splits(root: str | Path = DEFAULT_ROOT) -> list[str]:
+    """Splits whose directory exists under ``root`` (download order)."""
+    base = Path(root)
+    return [split for split in SPLITS if (base / SPLITS[split]).is_dir()]
 
-    Args:
-        split: one of ``SPLITS`` (e.g. ``"test_task"``).
-        root: directory containing ``train/``, ``test_task/``, ...
 
-    Returns:
-        A list of instances (each item is a dict following the Mind2Web schema).
+def iter_split(split: str, root: str | Path = DEFAULT_ROOT) -> Iterator[dict[str, Any]]:
+    """Yield one instance at a time, loading a single JSON file at a time.
+
+    Use this instead of :func:`load_split` when a split is too large to hold in memory
+    (e.g. EDA over ``train``).
     """
     if split not in SPLITS:
         raise ValueError(f"invalid split: {split!r}. Choose one of {list(SPLITS)}")
@@ -53,15 +56,26 @@ def load_split(split: str, root: str | Path = DEFAULT_ROOT) -> list[dict[str, An
             f"{split_dir} not found. Run `uv run m2w-download` first (see README)."
         )
 
-    instances: list[dict[str, Any]] = []
     for path in _iter_json_files(split_dir):
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
         # each file may be a list, or a dict wrapping a list
         if isinstance(data, dict):
             data = data.get("data", data.get("instances", []))
-        instances.extend(data)
-    return instances
+        yield from data
+
+
+def load_split(split: str, root: str | Path = DEFAULT_ROOT) -> list[dict[str, Any]]:
+    """Load one split as a list of instances.
+
+    Args:
+        split: one of ``SPLITS`` (e.g. ``"test_task"``).
+        root: directory containing ``train/``, ``test_task/``, ...
+
+    Returns:
+        A list of instances (each item is a dict following the Mind2Web schema).
+    """
+    return list(iter_split(split, root))
 
 
 def load_all_splits(root: str | Path = DEFAULT_ROOT) -> dict[str, list[dict[str, Any]]]:

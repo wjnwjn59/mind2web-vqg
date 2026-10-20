@@ -14,6 +14,7 @@ mind2web_vqg/
 ├── evaluate.py        # eval loop: load -> build_examples -> model.generate -> predictions.json
 ├── metrics.py         # question-quality metrics (offline) + round-trip answerability
 ├── report.py          # readable report of a run: report.md + report.html gallery
+├── eda.py             # corpus EDA over the HTML tree (element types, targets, VQG yield)
 ├── smoke_vlm.py       # screenshot -> VLM smoke test (6 probes) -> outputs/smoke_vlm/
 ├── train.py           # fine-tuning skeleton (not implemented)
 │
@@ -128,6 +129,37 @@ uv run m2w-report --split test_task --limit 50   # only the first 50 examples
 ```
 
 Open `report.html` in a browser to review a run visually.
+
+### `eda.py`
+
+Measures the corpus *before* synthesizing questions from it. If questions are generated
+from every element of a page tree (instead of only the recorded target), the tag mix of the
+tree becomes the tag mix of the data — so the mix is measured first.
+
+```bash
+uv run m2w-eda --split test_task --limit 200   # one split, first 200 tasks
+uv run m2w-eda --split train --limit 0         # one whole split (0 = no limit)
+uv run m2w-eda --all-splits --limit 0          # every downloaded split + summary
+# -> outputs/eda/<split>/{eda.md,eda.json,tags.csv}
+#    outputs/eda/{summary.md,summary.json}
+```
+
+The whole-corpus pass is CPU-bound (one `html.parser` per step): run it in `screen`. Memory
+stays flat because `iter_split()` loads a single JSON file at a time.
+
+What it counts, over `actions[*].cleaned_html` (or `--html raw`):
+
+| Block | Why it matters |
+| --- | --- |
+| element-type distribution + share of steps containing each type | which tag will dominate uncontrolled synthesis |
+| tree vs **recorded targets**, with `lift` = target share / tree share | a rare tag with high lift is one the agent is forced to use |
+| VQG potential per category | how many `target_label` / `element_type` / `target_region` questions the tree can support |
+| input types, operations, task/step lengths, sites, candidates, repeated page states | the other axes that shape the data |
+
+`parse_html()` counts tags, labelled elements and `<input type>` with the **stdlib**
+`html.parser` (no new dependency), skipping `script`/`style`/`noscript`/`template`/`svg`/
+`head`. An element is *labelled* when it has non-empty text or `aria-label`/`title`/`alt`/
+`placeholder` (plus `value` for input/button/option).
 
 ## Which file should you edit?
 

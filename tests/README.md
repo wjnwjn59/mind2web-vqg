@@ -84,6 +84,24 @@ These are smoke tests: fast, no data, no API calls, no GPU.
 | `test_write_report_creates_both_files` | `report.md` + `report.html` land in the output dir |
 | `test_reports_handle_an_empty_run` | an empty run still produces a valid report |
 
+`test_eda.py` — corpus EDA over the HTML tree (`eda.py`):
+
+| Test | Checks |
+| --- | --- |
+| `test_parse_html_counts_tags_and_skips_scripts` | tag counts, `script` subtree ignored |
+| `test_parse_html_detects_labels` | text / `aria-label` / `alt` / `placeholder` / `value` |
+| `test_parse_html_collects_input_types` | `<input type=...>` histogram (defaults to `text`) |
+| `test_parse_html_tolerates_unclosed_tags` | malformed dumps do not crash the run |
+| `test_recorded_target_*` | `is_original_target` pick, first-candidate fallback, empty |
+| `test_summarize_counts_elements_and_targets` | tasks/steps/elements and target rates |
+| `test_summarize_computes_the_target_lift` | `lift` = target share / tree share |
+| `test_summarize_estimates_vqg_potential` | label / type / region question capacity |
+| `test_summarize_detects_repeated_page_states` | identical step HTML is counted once |
+| `test_render_markdown_has_the_main_sections` / `test_write_report_*` | report + `tags.csv` |
+| `test_available_splits_lists_only_existing_directories` | whole-corpus mode skips splits that weren't downloaded |
+| `test_render_summary_has_one_row_per_split_plus_all` | cross-split table with an `all` row |
+| `test_main_all_splits_writes_a_summary` | `--all-splits` end to end (per-split + summary) |
+
 `test_model_download.py` — the weights-download helpers (`models/download.py`):
 
 | Test | Checks |

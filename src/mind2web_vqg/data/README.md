@@ -112,17 +112,21 @@ are gone, there is no base URL, and `<text>` nodes are not real HTML. Expect an 
 ## `load.py` — read the data
 
 ```python
-from mind2web_vqg.data.load import SPLITS, load_split, load_all_splits
+from mind2web_vqg.data.load import SPLITS, iter_split, load_split, load_all_splits
 
 instances = load_split("test_task")            # list[dict]
 instances = load_split("test_task", root=...)  # different root directory
 all_data  = load_all_splits()                  # skips splits that weren't downloaded
+
+for instance in iter_split("train"):           # streaming: one JSON file at a time
+    ...
 ```
 
 - `SPLITS = {"train", "test_task", "test_website", "test_domain"}` → subdirectory names.
 - `DEFAULT_ROOT = RAW_DIR / "data"`.
 - Each JSON file can be a list, or a dict wrapping a list under `data` / `instances`.
 - A missing split raises `FileNotFoundError` with a hint to run `m2w-download`.
+- `iter_split()` is the memory-flat variant used by `m2w-eda` on large splits.
 
 Run it directly to see the counts:
 
