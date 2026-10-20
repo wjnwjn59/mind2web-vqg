@@ -269,15 +269,21 @@ that dominate the tree will dominate the generated data.
 ```bash
 uv run m2w-eda --split test_task --limit 200   # first 200 tasks of one split
 uv run m2w-eda --split train --limit 0         # the whole split (0 = no limit)
-uv run m2w-eda --all-splits --limit 0          # every downloaded split + comparison
+uv run m2w-eda --all-splits --limit 0          # every downloaded split + the whole corpus
 
 # -> outputs/eda/<split>/{eda.md,eda.json,tags.csv}
-#    outputs/eda/{summary.md,summary.json}     (only with --all-splits)
+#    outputs/eda/all/{eda.md,eda.json,tags.csv}      every split as ONE corpus
+#    outputs/eda/{summary.md,summary.json}           cross-split comparison
 ```
 
 Parsing is CPU-bound (pure-Python HTML parser): expect minutes per split and ~10-30 min
 for everything, so run the full pass inside `screen`. The per-split report answers "which
-types dominate"; `summary.md` answers "do the splits differ".
+types dominate", `summary.md` answers "do the splits differ", and `all/eda.md` is the single
+report for the whole corpus.
+
+The merged report costs **no extra pass**: each split is counted into an accumulator, the
+accumulators are added together, and only then is the report built. So `--all-splits` reads
+every HTML tree once, no matter how many reports come out of it.
 
 It parses `actions[*].cleaned_html` and reports: the element-type distribution and the share
 of steps containing each type; the **recorded targets** next to the tree with a `lift` column

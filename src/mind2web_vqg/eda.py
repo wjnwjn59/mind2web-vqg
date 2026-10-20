@@ -21,6 +21,11 @@ Usage::
     uv run m2w-eda --split test_task --limit 200
     uv run m2w-eda --split train --limit 500 --html raw
     uv run m2w-eda --split test_task --limit 50 --out outputs/eda/quick
+    uv run m2w-eda --all-splits --limit 0      # every split + one merged corpus report
+
+Counters (:class:`Acc`) are kept apart from rendering (:func:`finalize`) so ``--all-splits``
+can count each split once, add the accumulators together and still emit per-split *and*
+whole-corpus reports from a single pass.
 """
 
 from __future__ import annotations
@@ -34,6 +39,7 @@ import statistics
 import sys
 from collections import Counter
 from collections.abc import Iterable
+from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
@@ -197,35 +203,114 @@ def _percentile(values: list[int], q: float) -> int:
     return ordered[min(len(ordered) - 1, int(q * (len(ordered) - 1)))]
 
 
-def summarize(
-    instances: Iterable[dict[str, Any]],
-    *,
-    split: str = "?",
-    html_field: str = "cleaned",
-) -> dict[str, Any]:
-    """Aggregate tree/target/operation statistics over an iterable of instances."""
+#: Counter attributes of :class:`Acc` (merged with ``Counter.update``, i.e. summed).
+_ACC_COUNTERS = (
+    "tags",
+    "labelled",
+    "input_types",
+    "presence",
+    "target_tags",
+    "ops",
+    "with_value",
+    "websites",
+    "domains",
+    "subdomains",
+)
+
+#: Integer attributes of :class:`Acc` (merged by addition).
+_ACC_SCALARS = (
+    "tasks",
+    "steps",
+    "steps_with_html",
+    "tasks_without_html",
+    "parse_errors",
+    "elements",
+    "target_labels",
+    "target_bboxes",
+)
+
+#: List attributes of :class:`Acc` (merged by concatenation).
+_ACC_LISTS = ("html_sizes", "steps_per_task", "task_words", "pos_counts", "neg_counts")
+
+
+@dataclass
+class Acc:
+    """Raw counters for one pass over instances.
+
+    Kept separate from :func:`finalize` so every split can be counted independently and
+    then merged into one whole-corpus accumulator *without parsing anything twice*.
+    """
+
+    tags: Counter[str] = field(default_factory=Counter)
+    labelled: Counter[str] = field(default_factory=Counter)
+    input_types: Counter[str] = field(default_factory=Counter)
+    presence: Counter[str] = field(default_factory=Counter)
+    target_tags: Counter[str] = field(default_factory=Counter)
+    ops: Counter[str] = field(default_factory=Counter)
+    with_value: Counter[str] = field(default_factory=Counter)
+    websites: Counter[str] = field(default_factory=Counter)
+    domains: Counter[str] = field(default_factory=Counter)
+    subdomains: Counter[str] = field(default_factory=Counter)
+
+    tasks: int = 0
+    steps: int = 0
+    steps_with_html: int = 0
+    tasks_without_html: int = 0
+    parse_errors: int = 0
+    elements: int = 0
+    target_labels: int = 0
+    target_bboxes: int = 0
+
+    html_sizes: list[int] = field(default_factory=list)
+    steps_per_task: list[int] = field(default_factory=list)
+    task_words: list[int] = field(default_factory=list)
+    pos_counts: list[int] = field(default_factory=list)
+    neg_counts: list[int] = field(default_factory=list)
+    seen_html: set[str] = field(default_factory=set)
+
+    def add(self, other: Acc) -> None:
+        """Add ``other`` to this accumulator, in place."""
+        for name in _ACC_COUNTERS:
+            getattr(self, name).update(getattr(other, name))
+        for name in _ACC_SCALARS:
+            setattr(self, name, getattr(self, name) + getattr(other, name))
+        for name in _ACC_LISTS:
+            getattr(self, name).extend(getattr(other, name))
+        self.seen_html |= other.seen_html
+
+    def merge(self, others: Iterable[Acc]) -> Acc:
+        """Return a **new** accumulator holding ``self`` plus ``others``."""
+        total = Acc()
+        total.add(self)
+        for other in others:
+            total.add(other)
+        return total
+
+
+def accumulate(instances: Iterable[dict[str, Any]], *, html_field: str = "cleaned") -> Acc:
+    """Count everything in a single pass (rendering happens in :func:`finalize`)."""
     field = HTML_FIELDS.get(html_field, html_field)
+    acc = Acc()
 
-    tags: Counter[str] = Counter()
-    labelled: Counter[str] = Counter()
-    input_types: Counter[str] = Counter()
-    presence: Counter[str] = Counter()
-    target_tags: Counter[str] = Counter()
-    ops: Counter[str] = Counter()
-    with_value: Counter[str] = Counter()
-    websites: Counter[str] = Counter()
-    domains: Counter[str] = Counter()
-    subdomains: Counter[str] = Counter()
+    tags = acc.tags
+    labelled = acc.labelled
+    input_types = acc.input_types
+    presence = acc.presence
+    target_tags = acc.target_tags
+    ops = acc.ops
+    with_value = acc.with_value
+    websites = acc.websites
+    domains = acc.domains
+    subdomains = acc.subdomains
 
-    tasks = steps = steps_with_html = parse_errors = tasks_without_html = 0
+    tasks = steps = steps_with_html = tasks_without_html = 0
     elements = target_labels = target_bboxes = 0
-    html_sizes: list[int] = []
-    steps_per_task: list[int] = []
-    task_words: list[int] = []
-    pos_counts: list[int] = []
-    neg_counts: list[int] = []
-    seen_html: set[str] = set()
-    repeated_steps = 0
+    html_sizes = acc.html_sizes
+    steps_per_task = acc.steps_per_task
+    task_words = acc.task_words
+    pos_counts = acc.pos_counts
+    neg_counts = acc.neg_counts
+    seen_html = acc.seen_html
 
     for instance in instances:
         tasks += 1
@@ -263,11 +348,9 @@ def summarize(
                 continue
             html_here += 1
             html_sizes.append(len(fragment))
-            digest = hashlib.md5(fragment.encode("utf-8", "ignore")).hexdigest()
-            if digest in seen_html:
-                repeated_steps += 1
-            else:
-                seen_html.add(digest)
+            # Store unique digests only: `repeated = steps_with_html - len(seen_html)` in
+            # finalize, which stays exact when accumulators from different splits are merged.
+            seen_html.add(hashlib.md5(fragment.encode("utf-8", "ignore")).hexdigest())
 
             parsed = parse_html(fragment)
             elements += parsed["elements"]
@@ -279,6 +362,35 @@ def summarize(
         steps_with_html += html_here
         if not html_here:
             tasks_without_html += 1
+
+    acc.tasks = tasks
+    acc.steps = steps
+    acc.steps_with_html = steps_with_html
+    acc.tasks_without_html = tasks_without_html
+    acc.elements = elements
+    acc.target_labels = target_labels
+    acc.target_bboxes = target_bboxes
+    return acc
+
+
+def finalize(acc: Acc, *, split: str = "?", html_field: str = "cleaned") -> dict[str, Any]:
+    """Turn raw counters into the report dict the renderers consume."""
+    field = HTML_FIELDS.get(html_field, html_field)
+
+    tags, labelled = acc.tags, acc.labelled
+    input_types, presence = acc.input_types, acc.presence
+    target_tags = acc.target_tags
+    ops, with_value = acc.ops, acc.with_value
+    websites, domains, subdomains = acc.websites, acc.domains, acc.subdomains
+    tasks, steps, steps_with_html = acc.tasks, acc.steps, acc.steps_with_html
+    tasks_without_html, parse_errors = acc.tasks_without_html, acc.parse_errors
+    elements, target_labels, target_bboxes = acc.elements, acc.target_labels, acc.target_bboxes
+    html_sizes = acc.html_sizes
+    steps_per_task, task_words = acc.steps_per_task, acc.task_words
+    pos_counts, neg_counts = acc.pos_counts, acc.neg_counts
+    seen_html = acc.seen_html
+    # Exact even after merging splits: each HTML step added a digest or it did not.
+    repeated_steps = steps_with_html - len(seen_html)
 
     questionable_tags = set(ROLE_BY_TAG) | {"input"}
     mapped_elements = sum(count for tag, count in tags.items() if tag in questionable_tags)
@@ -386,6 +498,17 @@ def summarize(
             "target_region": target_bboxes,
         },
     }
+
+
+def summarize(
+    instances: Iterable[dict[str, Any]],
+    *,
+    split: str = "?",
+    html_field: str = "cleaned",
+) -> dict[str, Any]:
+    """Aggregate tree/target/operation statistics over an iterable of instances."""
+    acc = accumulate(instances, html_field=html_field)
+    return finalize(acc, split=split, html_field=html_field)
 
 
 # --------------------------------------------------------------------------- #
@@ -617,8 +740,8 @@ def render_summary(results: list[dict[str, Any]]) -> str:
     lines = [
         "# EDA — all splits",
         "",
-        f"Combined view of {len(results)} split(s). Per-split tables live in "
-        "`eda/<split>/eda.md`.",
+        f"Combined view of {len(results)} split(s). The whole corpus as one report is "
+        "`eda/all/eda.md`; per-split tables live in `eda/<split>/eda.md`.",
         "",
         _table(
             [
@@ -711,7 +834,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--all-splits",
         action="store_true",
-        help="run every downloaded split and also write eda/summary.md",
+        help="run every downloaded split, then one merged report for the whole corpus",
     )
     parser.add_argument("--root", type=Path, default=None, help="JSON data root")
     parser.add_argument("--out", type=Path, default=None, help="default: outputs/eda/<split>")
@@ -731,15 +854,26 @@ def main(argv: list[str] | None = None) -> int:
             print("[eda] no downloaded split found — run `uv run m2w-download` first")
             return 1
         results = []
+        accs: list[Acc] = []
         for index, split in enumerate(splits, start=1):
             print(f"[eda] ({index}/{len(splits)}) {split}")
-            result = summarize(instances(split), split=split, html_field=args.html)
+            acc = accumulate(instances(split), html_field=args.html)
+            result = finalize(acc, split=split, html_field=args.html)
             write_report(result, out_root / split)
             print(
                 f"  {result['tasks']} task(s), {result['steps']} step(s), "
                 f"{result['elements']} element(s)"
             )
             results.append(result)
+            accs.append(acc)
+
+        # Same pass, no re-parsing: the whole corpus as one report.
+        all_result = finalize(accs[0].merge(accs[1:]), split="all", html_field=args.html)
+        write_report(all_result, out_root / "all")
+        print(
+            f"[eda] all: {all_result['tasks']} task(s), {all_result['steps']} step(s), "
+            f"{all_result['elements']} element(s)"
+        )
 
         summary_md = out_root / "summary.md"
         summary_md.write_text(render_summary(results), encoding="utf-8")

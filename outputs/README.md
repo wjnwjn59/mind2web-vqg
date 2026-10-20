@@ -16,6 +16,7 @@ outputs/
 │   ├── eda.md               # element-type / target / yield tables + findings
 │   ├── eda.json             # the same numbers, machine-readable
 │   └── tags.csv             # one row per HTML tag (for plotting)
+├── eda/all/                 # every split merged into one corpus (same three files)
 ├── eda/summary.md           # cross-split comparison (only with `--all-splits`)
 ├── eda/summary.json
 ├── render_check/<split>/    # written by `uv run m2w-render-html`

@@ -6,6 +6,8 @@ from typing import Any
 
 from mind2web_vqg.data.load import available_splits
 from mind2web_vqg.eda import (
+    accumulate,
+    finalize,
     main,
     parse_html,
     recorded_target,
@@ -182,6 +184,21 @@ def test_summarize_marks_the_top_questionable_type() -> None:
     assert result["questionable"][0]["role"] == "link"
 
 
+def test_merge_of_accumulators_matches_a_single_pass() -> None:
+    rows = [instance(SAMPLE_HTML), instance(None)]
+    left = accumulate(rows[:1])
+    right = accumulate(rows[1:])
+    assert finalize(left.merge([right]), split="all") == summarize(rows, split="all")
+
+
+def test_merge_keeps_repeated_page_states_exact() -> None:
+    page = instance(SAMPLE_HTML)
+    merged = accumulate([page]).merge([accumulate([page])])
+    assert merged.steps_with_html == 2
+    assert len(merged.seen_html) == 1  # same page in both splits -> union, not sum
+    assert finalize(merged)["html_repeated_steps"] == 1
+
+
 # --------------------------------------------------------------------------- #
 # Rendering / output
 # --------------------------------------------------------------------------- #
@@ -247,3 +264,10 @@ def test_main_all_splits_writes_a_summary(tmp_path: Path) -> None:
     assert (out / "summary.json").exists()
     assert (out / "test_task" / "eda.md").exists()
     assert (out / "train" / "eda.md").exists()
+
+    # Plus one merged report for the whole corpus, built without a second pass.
+    merged = json.loads((out / "all" / "eda.json").read_text(encoding="utf-8"))
+    assert merged["split"] == "all"
+    assert merged["tasks"] == 2
+    assert merged["html_repeated_steps"] == 1  # the same page in both splits
+    assert (out / "all" / "tags.csv").exists()

@@ -139,10 +139,17 @@ tree becomes the tag mix of the data — so the mix is measured first.
 ```bash
 uv run m2w-eda --split test_task --limit 200   # one split, first 200 tasks
 uv run m2w-eda --split train --limit 0         # one whole split (0 = no limit)
-uv run m2w-eda --all-splits --limit 0          # every downloaded split + summary
+uv run m2w-eda --all-splits --limit 0          # every split + the merged corpus
 # -> outputs/eda/<split>/{eda.md,eda.json,tags.csv}
-#    outputs/eda/{summary.md,summary.json}
+#    outputs/eda/all/{eda.md,eda.json,tags.csv}   all splits as ONE corpus
+#    outputs/eda/{summary.md,summary.json}        cross-split comparison
 ```
+
+`acc = accumulate(instances)` keeps raw counters, `finalize(acc)` builds the report dict, and
+`accs[0].merge(accs[1:])` adds the per-split accumulators together — so the merged report and
+the per-split reports come from **one** pass over the HTML. Merging is exact, not averaged:
+counters are summed, and repeated-page detection is recomputed as
+`steps_with_html - len(seen_html)` over the union of digests.
 
 The whole-corpus pass is CPU-bound (one `html.parser` per step): run it in `screen`. Memory
 stays flat because `iter_split()` loads a single JSON file at a time.

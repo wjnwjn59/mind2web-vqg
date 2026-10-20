@@ -98,9 +98,11 @@ These are smoke tests: fast, no data, no API calls, no GPU.
 | `test_summarize_estimates_vqg_potential` | label / type / region question capacity |
 | `test_summarize_detects_repeated_page_states` | identical step HTML is counted once |
 | `test_render_markdown_has_the_main_sections` / `test_write_report_*` | report + `tags.csv` |
+| `test_merge_of_accumulators_matches_a_single_pass` | merged splits equal one pass over both |
+| `test_merge_keeps_repeated_page_states_exact` | digest union, not summed counts |
 | `test_available_splits_lists_only_existing_directories` | whole-corpus mode skips splits that weren't downloaded |
 | `test_render_summary_has_one_row_per_split_plus_all` | cross-split table with an `all` row |
-| `test_main_all_splits_writes_a_summary` | `--all-splits` end to end (per-split + summary) |
+| `test_main_all_splits_writes_a_summary` | `--all-splits` end to end (per-split + merged + summary) |
 
 `test_model_download.py` — the weights-download helpers (`models/download.py`):
 
