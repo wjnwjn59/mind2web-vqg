@@ -3,7 +3,12 @@
 import zipfile
 from pathlib import Path
 
-from mind2web_vqg.data.download import _normalise_split_layout, _unzip_test
+import pytest
+
+from mind2web_vqg.data.download import _normalise_split_layout, _unzip_test, verify_layout
+from mind2web_vqg.data.load import iter_split
+
+TRAIN_ROWS = [{"annotation_id": "a"}, {"annotation_id": "b"}]
 
 
 def _make_zip(path: Path, names: list[str]) -> Path:
@@ -13,6 +18,15 @@ def _make_zip(path: Path, names: list[str]) -> Path:
     return path
 
 
+def _write(path: Path, content: str) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+    return path
+
+
+# --------------------------------------------------------------------------- #
+# Split layout
+# --------------------------------------------------------------------------- #
 def test_unzip_moves_the_test_splits_under_data(tmp_path: Path) -> None:
     """`test.zip` has the splits at its root; the loaders expect them under `data/`."""
     archive = _make_zip(
@@ -55,10 +69,8 @@ def test_normalise_is_idempotent(tmp_path: Path) -> None:
 
 
 def test_normalise_never_overwrites_an_existing_split(tmp_path: Path) -> None:
-    (tmp_path / "data" / "test_task").mkdir(parents=True)
-    (tmp_path / "data" / "test_task" / "kept.json").write_text("[]", encoding="utf-8")
-    (tmp_path / "test_task").mkdir()
-    (tmp_path / "test_task" / "loose.json").write_text("[]", encoding="utf-8")
+    _write(tmp_path / "data" / "test_task" / "kept.json", "[]")
+    _write(tmp_path / "test_task" / "loose.json", "[]")
 
     assert _normalise_split_layout(tmp_path) == []
 
@@ -72,3 +84,67 @@ def test_normalise_creates_the_data_directory_when_missing(tmp_path: Path) -> No
     _normalise_split_layout(tmp_path)
 
     assert (tmp_path / "data" / "test_domain").is_dir()
+
+
+# --------------------------------------------------------------------------- #
+# Verification
+# --------------------------------------------------------------------------- #
+def test_verify_accepts_a_healthy_layout(tmp_path: Path, capsys) -> None:
+    _write(tmp_path / "data" / "train" / "train_0.json", '[{"a": 1}, {"a": 2}]')
+    _write(tmp_path / "data" / "test_task" / "task_0.json", "[]")
+
+    assert verify_layout(tmp_path) == 0
+    out = capsys.readouterr().out
+    assert "train" in out and "2 row(s)" in out
+    assert "0 broken file(s)" in out
+    assert "2 missing split(s)" in out  # the two test splits are simply not downloaded
+
+
+def test_verify_names_a_truncated_file(tmp_path: Path, capsys) -> None:
+    _write(tmp_path / "data" / "train" / "train_0.json", '[{"clean'[:8])
+
+    assert verify_layout(tmp_path) == 1
+    out = capsys.readouterr().out
+    assert "BROKEN train_0.json" in out
+    assert "1 broken file(s)" in out
+
+
+def test_verify_reports_a_missing_split_without_failing(tmp_path: Path, capsys) -> None:
+    _write(tmp_path / "data" / "train" / "train_0.json", "[]")
+
+    assert verify_layout(tmp_path) == 0
+    assert "MISSING" in capsys.readouterr().out
+
+
+def test_verify_counts_a_wrapped_instance_list(tmp_path: Path, capsys) -> None:
+    _write(tmp_path / "data" / "train" / "train_0.json", '{"data": [{}, {}, {}]}')
+
+    assert verify_layout(tmp_path) == 0
+    assert "3 row(s)" in capsys.readouterr().out
+
+
+# --------------------------------------------------------------------------- #
+# Loading
+# --------------------------------------------------------------------------- #
+def test_iter_split_reads_instances(tmp_path: Path) -> None:
+    _write(tmp_path / "train" / "train_0.json", '[{"id": 1}, {"id": 2}]')
+
+    assert [row["id"] for row in iter_split("train", tmp_path)] == [1, 2]
+
+
+def test_iter_split_names_a_truncated_file(tmp_path: Path) -> None:
+    _write(tmp_path / "train" / "train_0.json", '[{"annotation_id": "x"')
+
+    with pytest.raises(ValueError) as error:
+        list(iter_split("train", tmp_path))
+
+    message = str(error.value)
+    assert "train_0.json" in message
+    assert "m2w-download --verify" in message
+
+
+def test_iter_split_explains_a_missing_split(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError) as error:
+        list(iter_split("test_task", tmp_path))
+
+    assert "m2w-download" in str(error.value)

@@ -57,8 +57,19 @@ def iter_split(split: str, root: str | Path = DEFAULT_ROOT) -> Iterator[dict[str
         )
 
     for path in _iter_json_files(split_dir):
-        with open(path, encoding="utf-8") as f:
-            data = json.load(f)
+        try:
+            # utf-8-sig: same as utf-8, but tolerates a BOM written by some tools.
+            with open(path, encoding="utf-8-sig") as handle:
+                data = json.load(handle)
+        except json.JSONDecodeError as error:
+            # A truncated file is the usual cause (an interrupted `unzip`), and without the
+            # path the traceback only points at "line 1 column N" of an unnamed file.
+            size = path.stat().st_size if path.exists() else 0
+            raise ValueError(
+                f"{path} is not valid JSON ({error}; {size:,} bytes on disk). "
+                "The file is probably truncated: run `uv run m2w-download --verify` and "
+                "re-extract the split."
+            ) from error
         # each file may be a list, or a dict wrapping a list
         if isinstance(data, dict):
             data = data.get("data", data.get("instances", []))

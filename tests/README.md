@@ -104,8 +104,22 @@ These are smoke tests: fast, no data, no API calls, no GPU.
 | `test_render_summary_has_one_row_per_split_plus_all` | cross-split table with an `all` row |
 | `test_main_all_splits_writes_a_summary` | `--all-splits` end to end (per-split + merged + summary) |
 
-`test_eda_report.py` — the LaTeX report (`eda_report.py`); no TeX distribution required:
+`test_download.py` — the JSON download helpers (`data/download.py`, `data/load.py`); no network:
 
+| Test | Checks |
+| --- | --- |
+| `test_unzip_moves_the_test_splits_under_data` | `test.zip` root layout ends as `raw/data/<split>` |
+| `test_unzip_keeps_an_archive_that_already_has_the_data_prefix` | an archive with `data/…` is left alone |
+| `test_normalise_*` | idempotent, never overwrites, creates `data/`, leaves `train` alone |
+| `test_verify_accepts_a_healthy_layout` | per-split file/row counts, exit 0 |
+| `test_verify_names_a_truncated_file` | prints `BROKEN <file>` and exits 1 |
+| `test_verify_reports_a_missing_split_without_failing` | a split that was not downloaded is not an error |
+| `test_verify_counts_a_wrapped_instance_list` | `{"data": [...]}` counts its rows |
+| `test_iter_split_reads_instances` | streaming load of one split |
+| `test_iter_split_names_a_truncated_file` | `ValueError` names the path and suggests `--verify` |
+| `test_iter_split_explains_a_missing_split` | `FileNotFoundError` points at `m2w-download` |
+
+`test_eda_report.py` — the LaTeX report (`eda_report.py`); no TeX distribution required:
 | Test | Checks |
 | --- | --- |
 | `test_tex_escapes_every_special_character` / `test_tex_does_not_double_escape_*` | LaTeX escaping is single-pass (`\_`, `\%`, `\textbackslash{}`) |

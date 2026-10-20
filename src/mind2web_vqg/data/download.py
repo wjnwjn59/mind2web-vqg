@@ -21,6 +21,7 @@ NOTE: data under ``data/`` is gitignored -> do NOT commit it to GitHub.
 from __future__ import annotations
 
 import argparse
+import json
 import shutil
 import sys
 import zipfile
@@ -64,6 +65,58 @@ def _unzip_test(zip_path: Path, dest: Path) -> None:
         zf.extractall(path=dest, pwd=TEST_ZIP_PASSWORD)
     _normalise_split_layout(dest)
     print(f"[download] done -> {dest / 'data'}")
+
+
+def verify_layout(dest: Path | None = None) -> int:
+    """Parse every JSON file under ``dest/data`` and report rows per split.
+
+    A truncated JSON file is the classic symptom of an interrupted extraction, and the
+    traceback from a deep loader only names a line and column. This check names the file,
+    so a broken corpus is found in seconds instead of after a long EDA pass.
+
+    Returns 0 when every present file parses, 1 when any file is broken. A split that was
+    never downloaded is reported but is not an error: ``m2w-download --skip-test`` is a
+    legitimate state.
+    """
+    dest = dest or RAW_DIR
+    root = dest / "data"
+    print(f"[download] verifying {root}")
+
+    problems = 0
+    missing = 0
+    total = 0
+    for split in SPLITS:
+        directory = root / split
+        if not directory.is_dir():
+            print(f"  {split:14s} MISSING ({directory})")
+            missing += 1
+            continue
+
+        files = sorted(directory.glob("*.json"))
+        rows = 0
+        broken = 0
+        for path in files:
+            try:
+                with open(path, encoding="utf-8-sig") as handle:
+                    data = json.load(handle)
+            except (OSError, json.JSONDecodeError) as error:
+                size = path.stat().st_size if path.exists() else 0
+                print(f"  {split:14s} BROKEN {path.name} ({size:,} bytes): {error}")
+                broken += 1
+                continue
+            if isinstance(data, dict):
+                data = data.get("data", data.get("instances", []))
+            rows += len(data)
+
+        total += rows
+        problems += broken
+        state = "ok" if broken == 0 else "BROKEN"
+        print(f"  {split:14s} {len(files):3d} file(s) {rows:6d} row(s)  {state}")
+
+    print(
+        f"[download] {total:,} row(s), {problems} broken file(s), {missing} missing split(s)"
+    )
+    return 0 if problems == 0 else 1
 
 
 def download(
@@ -127,7 +180,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--force", action="store_true", help="re-download even if the files already exist"
     )
+    parser.add_argument(
+        "--verify",
+        action="store_true",
+        help="no download: parse every JSON file and report rows + broken files",
+    )
     args = parser.parse_args(argv)
+
+    if args.verify:
+        return verify_layout(args.dest)
 
     download(
         args.dest,

@@ -33,15 +33,34 @@ uv run m2w-download --skip-test  # train only
 uv run m2w-download --skip-train # test only (also repairs the split layout)
 uv run m2w-download --force      # re-download
 uv run m2w-download --dest D:\datasets\Mind2Web\raw
+uv run m2w-download --verify     # no download: parse every file, name broken ones
 ```
 
 The command ends by printing which splits are visible, e.g.
 `[download] splits available: train, test_task, test_website, test_domain` — if a split is
 missing there, `m2w-eda --all-splits` will silently skip it too.
 
+`--verify` parses every JSON file and prints, per split, the file and row counts:
+
+```
+[download] verifying /mnt/data/datasets/Mind2Web/raw/data
+  train            1 file(s)      2 row(s)  ok
+  test_task      BROKEN task_0.json (21 bytes): Unterminated string starting at: ...
+                                  1 file(s)      0 row(s)  BROKEN
+  test_website   MISSING (...)     ← not downloaded; reported, not an error
+[download] 2 row(s), 1 broken file(s), 2 missing split(s)
+```
+
+It exits `1` only when a file is broken (a missing split is legitimate). A truncated file is
+what an interrupted `unzip` leaves behind, and the loader traceback alone only points at
+"line 1 column 12965691" of an unnamed file — `iter_split()` now raises a `ValueError` that
+names the path instead. Repair it with `uv run m2w-download --skip-train --force`
+(re-downloads `test.zip` and re-extracts it).
+
 Default destination: `RAW_DIR` = `$MIND2WEB_DATA_DIR/raw` (default `./data/raw`).
 
-Public function: `download(dest=None, *, skip_train=False, skip_test=False, force=False) -> Path`.
+Public functions: `download(dest=None, *, skip_train=False, skip_test=False, force=False) -> Path`
+and `verify_layout(dest=None) -> int`.
 
 ## `download_multimodal.py` — screenshots (Multimodal-Mind2Web)
 
