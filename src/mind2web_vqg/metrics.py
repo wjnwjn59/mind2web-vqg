@@ -223,6 +223,9 @@ def compute_metrics(records: list[dict[str, Any]]) -> dict[str, Any]:
             "unique_ratio": round(unique_ratio(preds), 4),
             "rouge_l": _mean([rouge_l(p, r) for p, r in zip(preds, refs, strict=True)]),
             "chrf": _mean([chrf(p, r) for p, r in zip(preds, refs, strict=True)]),
+            "bleu4": _mean(
+                [_sentence_bleu(p, [r]) for p, r in zip(preds, refs, strict=True)]
+            ),
         }
 
     metrics = {
@@ -348,7 +351,7 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"  well-formed {metrics['well_formed_rate']:.2f} | unique {metrics['unique_ratio']:.2f}"
         f" | self-BLEU {metrics['self_bleu']:.2f} | ROUGE-L {metrics['rouge_l']:.2f}"
-        f" | chrF {metrics['chrf']:.2f}"
+        f" | chrF {metrics['chrf']:.2f} | BLEU-4 {metrics['bleu4']:.2f}"
     )
     if "round_trip" in metrics:
         predicted = metrics["round_trip"]["prediction"]
