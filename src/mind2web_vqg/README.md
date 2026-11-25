@@ -17,7 +17,14 @@ mind2web_vqg/
 ├── eda.py             # corpus EDA over the HTML tree (element types, targets, VQG yield)
 ├── eda_report.py      # the EDA as a LaTeX report (tables + matplotlib PNG charts)
 ├── smoke_vlm.py       # screenshot -> VLM smoke test (6 probes) -> outputs/smoke_vlm/
-├── train.py           # fine-tuning skeleton (not implemented)
+├── train.py           # ms-swift launcher: build data -> swift sft -> merge LoRA
+├── treevqg/           # 👉 TreeVQG dataset/benchmark track  -> treevqg/README.md
+│   ├── schema.py      #    UiNode / UiTree + JSON form
+│   ├── parse.py       #    cleaned_html -> UiTree
+│   ├── levels.py      #    Element (L1) / Container (L2) / Workflow (L3) anchors
+│   ├── templates.py   #    deterministic reference questions (MVP)
+│   ├── build.py       #    screenshots + HTML -> TreeVQG JSONL (m2w-build-treevqg)
+│   └── evaluate.py    #    API/HF/VLM eval on TreeVQG rows (m2w-eval-treevqg)
 │
 ├── data/              # download & prepare data        -> data/README.md
 ├── models/            # model backends                  -> models/README.md
@@ -59,6 +66,61 @@ outputs/smoke_vlm/<split>_<timestamp>/{results.jsonl, report.md}
 
 This is a **pipeline** check, not the research task: it only answers "can the model see this
 screenshot, and is the latency acceptable?". The real VQG task is defined in `data/vqg.py`.
+
+## How `m2w-train` flows
+
+```
+configs/train_swift.yaml
+        │  load_config
+        ▼
+train.run_train
+        │
+        ├─ data.swift.prepare_split(...)      # VQG -> messages/images JSONL
+        │        ├─ load_or_build_vqg         # data/processed/vqg/<split>/examples.jsonl
+        │        ├─ filter_missing_images     # drop + count broken paths
+        │        ├─ sample_per_category       # the EDA sampling budget
+        │        ├─ split_examples            # grouped by annotation_id
+        │        └─ write train.jsonl / val.jsonl / stats.json
+        ├─ build_sft_command(...)             # train_command.txt (reproducible)
+        ├─ subprocess: swift sft              # ms-swift lives in its own env
+        ├─ find_last_checkpoint(output_dir)
+        └─ subprocess: swift export --merge_lora -> outputs/models/<run>
+                 │
+                 ▼
+        uv run m2w-eval --model vlm/outputs/models/<run>
+```
+
+Why a subprocess: ms-swift pins its own torch/transformers, so importing it here would make
+the repo's inference environment (and `uv sync`) fight those pins. `--dry-run` prints the
+exact command without needing the GPU or the trainer installed.
+
+### `data/swift.py`
+
+The only module that knows the ms-swift schema (`messages` + `images`). Everything upstream
+stays framework-neutral, so a different trainer — including an RL one — needs one new
+converter, not a rewrite. `stats.json` (written next to the files) records per-split counts,
+per-category counts, task counts and dropped screenshots.
+
+## How the TreeVQG track flows
+
+```
+data/raw/data/<split>/*.json     actions[*].cleaned_html
+data/processed/multimodal/<split>/examples.jsonl + images/
+        │  m2w-build-treevqg (treevqg/build.py)
+        ▼
+treevqg/parse.py     HTML -> UiTree (parent/depth/role/label/bbox)
+treevqg/levels.py    pick anchors: L1 element, L2 container, L3 root
+treevqg/templates.py question + answer per level (rule-based MVP)
+        │
+        ▼
+data/processed/treevqg/<split>/{examples.jsonl,stats.json}
+        │  m2w-eval-treevqg (treevqg/evaluate.py)
+        ▼
+outputs/treevqg_eval_<split>/{predictions.json,metrics.json}   # L1/L2/L3 breakdown
+```
+
+The flat pipeline above stays as a baseline. Dataset/benchmark scope, paper ↔ code mapping
+and the day-by-day plan live in [`docs/treevqg/`](../../docs/treevqg/README.md).
 
 ## Utility files
 
@@ -217,7 +279,8 @@ panel draws them as a floor stub and lets the number annotation carry the real v
 | Change the smoke-test probes | `smoke_vlm.py::PROBES` |
 | Change the EDA report layout | `eda_report.py` |
 | Change the data location | env var, not code |
-| Implement fine-tuning | `train.py` |
+| Change hyperparameters / model | `configs/train_swift.yaml` |
+| Change the trainer (e.g. add RL) | `train.py` + `data/swift.py`; read `docs/train-framework.md` first |
 
 ## Quick checks
 

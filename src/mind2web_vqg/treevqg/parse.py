@@ -220,6 +220,68 @@ def parse_html(fragment: str, *, max_nodes: int = 5000) -> UiTree:
     return builder.finalize()
 
 
+def candidate_metadata(action: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """``backend_node_id`` -> merged candidate attributes for one action.
+
+    Mind2Web prunes the DOM but keeps ``backend_node_id`` on the surviving nodes, and
+    stores the pixel box (plus the target flags) in ``pos_candidates`` / ``neg_candidates``.
+    Joining the two recovers bounding boxes for most of the page **without** re-rendering
+    the dead page with Playwright.
+    """
+    out: dict[str, dict[str, Any]] = {}
+    for group in ("pos_candidates", "neg_candidates"):
+        for candidate in action.get(group) or []:
+            if not isinstance(candidate, dict):
+                continue
+            attrs = candidate.get("attributes")
+            if isinstance(attrs, str):
+                try:
+                    attrs = json.loads(attrs)
+                except (TypeError, ValueError):
+                    attrs = {}
+            attrs = attrs if isinstance(attrs, dict) else {}
+            node_id = str(attrs.get("backend_node_id") or candidate.get("backend_node_id") or "")
+            if node_id:
+                out[node_id] = {**attrs, **candidate}
+    return out
+
+
+def apply_candidate_metadata(tree: UiTree, action: dict[str, Any]) -> int:
+    """Attach candidate bounding boxes to matching tree nodes; return the match count."""
+    metadata = candidate_metadata(action)
+    if not metadata:
+        return 0
+    matched = 0
+    for node in tree.nodes:
+        key = str(node.attrs.get("backend_node_id") or "")
+        if not key or key not in metadata:
+            continue
+        matched += 1
+        if node.bbox is None:
+            node.bbox = _bbox_from_attrs(metadata[key])
+    return matched
+
+
+def target_from_candidates(tree: UiTree, action: dict[str, Any]) -> int | None:
+    """Locate the recorded target by ``backend_node_id`` (exact, unlike a text match)."""
+    metadata = candidate_metadata(action)
+    if not metadata:
+        return None
+    wanted = [
+        str(candidate.get("backend_node_id") or "")
+        for candidate in action.get("pos_candidates") or []
+        if isinstance(candidate, dict)
+        and (candidate.get("is_original_target") or candidate.get("is_top_level_target"))
+    ]
+    for key in wanted:
+        if not key:
+            continue
+        for node in tree.nodes:
+            if str(node.attrs.get("backend_node_id") or "") == key:
+                return node.id
+    return None
+
+
 def tree_stats(tree: UiTree) -> dict[str, int]:
     """Small size summary used by ``stats.json``."""
     depths = [node.depth for node in tree.nodes]

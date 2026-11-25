@@ -5,7 +5,9 @@ Research on **question generation (VQG)** built on the [Mind2Web](https://osu-nl
 Current goals:
 - ✅ Set up the repository skeleton and environment (using [`uv`](https://docs.astral.sh/uv/)).
 - ✅ Download and load the Mind2Web data (train + test).
-- 🔜 Test the "question-asking model" (an LLM **API** baseline **and** a local HuggingFace model).
+- ✅ Build the flat screenshot VQG pipeline (baseline) and its fine-tuning path.
+- 🚧 **TreeVQG dataset & benchmark track**: tree-conditioned questions at 3 levels — MVP runs today,
+  see [`docs/treevqg/`](docs/treevqg/README.md).
 - 🔜 Fine-tune on the cloud (Colab / Kaggle / rented GPU) when needed.
 
 ---
@@ -59,6 +61,9 @@ mind2web-vqg/
 │
 ├── configs/
 │   └── default.yaml          # run config for eval/train (split, model, prompt...)
+├── docs/
+│   ├── train-framework.md    # why ms-swift (+ cua for RL), and the training plan
+│   └── treevqg/              # 👉 the dataset/benchmark track: architecture, MVP, plan
 │
 ├── data/                     # ⚠️ DO NOT commit (gitignored)
 │   ├── raw/                  # downloaded Mind2Web data (see section 4)
@@ -78,6 +83,7 @@ mind2web-vqg/
 │   │   ├── multimodal.py     # parquet -> JPEGs + examples.jsonl
 │   │   ├── render_html.py    # Playwright render check (HTML -> PNG)
 │   │   ├── load.py           # load splits into list[dict]
+│   │   ├── swift.py          # 👉 VQG -> ms-swift JSONL (train/val, stats)
 │   │   └── prepare.py        # 👉 define the VQG task HERE
 │   ├── models/
 │   │   ├── base.py           # QuestionGenerator interface (text + image)
@@ -87,9 +93,16 @@ mind2web-vqg/
 │   │   └── download.py       # download weights via the hf-cache convention
 │   ├── prompts/
 │   │   └── question_gen.json # prompt template
+│   ├── treevqg/              # 👉 TreeVQG: DOM tree -> 3-level anchors -> dataset
+│   │   ├── schema.py         # UiNode / UiTree + JSON form (the structural condition)
+│   │   ├── parse.py          # cleaned_html -> UiTree
+│   │   ├── levels.py         # Element / Container / Workflow anchor selection
+│   │   ├── templates.py      # deterministic reference questions (MVP)
+│   │   ├── build.py          # join screenshots + HTML -> TreeVQG JSONL
+│   │   └── evaluate.py       # run API/HF/VLM on the TreeVQG JSONL
 │   ├── smoke_vlm.py          # screenshot -> VLM smoke test (6 simple probes)
 │   ├── evaluate.py           # evaluation loop -> outputs/
-│   └── train.py              # fine-tuning skeleton (run on the cloud)
+│   └── train.py              # ms-swift launcher (data -> sft -> merge)
 │
 ├── notebooks/                # data exploration (Jupyter)
 ├── tests/                    # pytest
@@ -113,6 +126,12 @@ and model weights in `hf-cache/`.
 | [`notebooks/README.md`](notebooks/README.md) | Running Jupyter, snippets for exploring the data |
 | [`tests/README.md`](tests/README.md) | Running pytest, what to test next |
 | [`outputs/README.md`](outputs/README.md) | What's inside `predictions.json` |
+| [`docs/train-framework.md`](docs/train-framework.md) | Framework choice (ms-swift), the SFT→DPO→GRPO plan, and every training command |
+| [`docs/treevqg/README.md`](docs/treevqg/README.md) | 👉 TreeVQG dataset/benchmark track: paper ↔ code map, data flow, current limits |
+| [`docs/treevqg/h1-h2-guide.md`](docs/treevqg/h1-h2-guide.md) | 👉 **Start here**: H1 vs H2, full run commands, outputs, reading order, troubleshooting |
+| [`docs/treevqg/mvp.md`](docs/treevqg/mvp.md) | 👉 Run the TreeVQG MVP end-to-end in one session |
+| [`docs/treevqg/related-work.md`](docs/treevqg/related-work.md) | 👉 Literature map, the measured gaps, and the recommended clarification-first direction |
+| [`docs/treevqg/plan.md`](docs/treevqg/plan.md) | 👉 Day-by-day plan index; one file per day in [`plan/`](docs/treevqg/plan/) |
 
 ---
 
@@ -327,6 +346,50 @@ If MiKTeX is not installed the PDF cannot be produced on that machine, but the `
 
 ---
 
+## 5.5 TreeVQG — dataset & benchmark track (`docs/treevqg/`)
+
+`docs/document.pdf` proposes **TreeVQG**: condition question generation on the UI hierarchy
+at three granularities — **Element (`L1`)**, **Container (`L2`)**, **Workflow (`L3`)** — instead
+of asking about a single flat target. This repo focuses on the **dataset and benchmark** that
+make such questions measurable, not on the proposed model. The data track is kept separate
+from the flat pipeline above:
+
+```bash
+# screenshots (existing) + the raw HTML dump (m2w-download)
+uv run m2w-build-treevqg --split test_task --limit 5
+# -> data/processed/treevqg/test_task/{examples.jsonl,stats.json}
+
+uv run m2w-eval-treevqg --split test_task --model api/gpt-4o-mini --max-samples 6
+# -> outputs/treevqg_eval_test_task/{predictions.json,metrics.json} with an L1/L2/L3 split
+
+# Check the data itself before using it: answer leakage, template collapse, level balance.
+uv run m2w-audit-treevqg --examples data/processed/treevqg/test_task/examples.jsonl
+# -> data/processed/treevqg/test_task/{audit.json,audit.md}
+
+# H2 clarification track: ask about user intent, not screen content.
+uv run m2w-build-clarify --split test_task --limit 0
+# -> data/processed/clarify/test_task/{examples.jsonl,stats.json}
+uv run m2w-audit-clarify --split test_task
+# -> outputs/clarify_audit/test_task/{audit.json,audit.md}
+uv run m2w-eval-clarify --split test_task --predictions preds.jsonl
+# -> outputs/clarify_eval/test_task/{eval.json,eval.md}
+```
+
+Each row carries the parsed UI tree (`tree.nodes[*]` with parent/depth/role/label/bbox) plus
+the level anchor, so the same file serves the text baseline today and any future structural
+encoder. The H2 track adds duplicate-label / container / safety questions, negative
+`NO_QUESTION` rows, and information-gain / Ask-F1 evaluation; see
+[`docs/treevqg/clarify.md`](docs/treevqg/clarify.md). The next steps are the benchmark ones:
+human validation, protocol, baselines, audit and release. Start with
+[`docs/treevqg/mvp.md`](docs/treevqg/mvp.md); the plan starts at
+[`docs/treevqg/plan.md`](docs/treevqg/plan.md) and links one file per day in
+[`docs/treevqg/plan/`](docs/treevqg/plan/).
+
+The flat VQG pipeline (`m2w-build-vqg`, `data/vqg.py`) stays as the **baseline** to compare
+against; it is not removed.
+
+---
+
 ## 6. Running evaluation
 
 ```bash
@@ -370,14 +433,43 @@ CUDA_VISIBLE_DEVICES=1 uv run m2w-eval --model vlm/Qwen/Qwen3.5-9B --max-samples
 
 ## 7. Fine-tuning (cloud / lab server)
 
-The training skeleton lives in `src/mind2web_vqg/train.py` (still a TODO). Suggested workflow:
+The training pipeline is implemented: **ms-swift + QLoRA** on Qwen3.5, with the dataset
+exported to ms-swift's multimodal JSONL format. Why this framework (and how it will grow
+into DPO / GRPO for an agent policy): [`docs/train-framework.md`](docs/train-framework.md).
 
-1. **Prepare locally:** download the data, then `m2w-mm-export` + `m2w-build-vqg` →
-   `data/processed/vqg/`.
-2. **Move to the cloud/server:** Colab/Kaggle/rented GPU or the lab server (section 8);
-   install `uv` (or pip) + `uv sync --extra train`.
-3. **Train:** `uv run m2w-train --config configs/default.yaml`.
-4. **Bring the model back locally** to re-evaluate it with `hf/...`.
+| Step | Command | Output |
+| --- | --- | --- |
+| 1. screenshots | `uv run m2w-mm-export --split train --limit 0` | `data/processed/multimodal/train/` |
+| 2. VQG labels | `uv run m2w-build-vqg --split train` | `data/processed/vqg/train/examples.jsonl` |
+| 3. train format | `uv run m2w-swift-data --split train` | `.../swift/{train,val}.jsonl,stats.json` |
+| 4. inspect | `uv run m2w-train --config configs/train_swift.yaml --dry-run` | `outputs/train/<run>/train_command.txt` |
+| 5. train | `uv run m2w-train --config configs/train_swift.yaml` | LoRA checkpoints + merged model |
+| 6. evaluate | `uv run m2w-eval --model vlm/outputs/models/qwen35-9b-vqg` | `outputs/eval_<split>/metrics.json` |
+
+ms-swift runs as a **subprocess in its own environment**, so the project's `uv sync` stays
+inference-only (the training stack pins its own torch/transformers):
+
+```bash
+uv venv .venv-swift --python 3.11
+. .venv-swift/bin/activate            # Windows: .venv-swift\Scripts\activate
+uv pip install ms-swift -U
+
+# then either keep it activated, or point at its executable:
+uv run m2w-train --config configs/train_swift.yaml --swift-bin .venv-swift/bin/swift
+```
+
+Why the split is safe by construction: `data/swift.py` groups the train/val split by
+`annotation_id`, so neighbouring actions of one task (which share a page state) never land
+on both sides. It also writes **absolute** image paths and drops missing screenshots into
+`stats.json`, instead of failing hours into a training run.
+
+Bring the merged model back locally and evaluate it with `vlm/<path>` — the eval code
+doesn't change. Train on the lab server inside `screen`, on card 1:
+
+```bash
+screen -S "<servername>_vqg_train"
+CUDA_VISIBLE_DEVICES=1 uv run m2w-train --config configs/train_swift.yaml
+```
 
 ---
 
@@ -486,7 +578,8 @@ CUDA_VISIBLE_DEVICES=1 uv run m2w-train --config configs/default.yaml
 - [ ] Generate the first real VQG set with `m2w-build-vqg` and eyeball it.
 - [ ] Add evaluation metrics (BLEU / ROUGE / LLM-as-judge).
 - [ ] API baseline + comparison against local HF models.
-- [ ] A complete fine-tuning pipeline.
+- [x] A complete fine-tuning pipeline (`docs/train-framework.md`, `m2w-train`).
+- [ ] RL for an agent policy (offline DPO from `pos/neg_candidates`, then GRPO).
 - [ ] Export `data/processed/` for easier sharing/management.
 
 ---

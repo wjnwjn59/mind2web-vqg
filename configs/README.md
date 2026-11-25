@@ -8,6 +8,7 @@ which model, which prompt, where to write results.
 | File | Used by |
 | --- | --- |
 | `default.yaml` | Default config for `m2w-eval` and `m2w-train` |
+| `train_swift.yaml` | `m2w-train` — ms-swift QLoRA run (data split, LoRA, merge) |
 | `smoke.yaml` | `m2w-vlm-smoke` — split/limit/model/probes for the screenshot pipeline test |
 | `eval_vlm.yaml` | `m2w-eval` with the local VLM on `test_task`, 6 examples (needs `uv sync --extra vlm`) |
 
@@ -37,7 +38,7 @@ declare every field.
 | `model` | `temperature`, `max_new_tokens` | *(not read yet)* | Declared but `evaluate.py` doesn't pass them to the model |
 | `prompt` | `file`, `template` | *(not read yet)* | The real prompt lives in `src/mind2web_vqg/prompts/` |
 | `output` | `dir` | *(not read yet)* | `evaluate.py` hard-codes `outputs/eval_<split>/` |
-| `train` | `base_model`, `output_dir`, `epochs`, ... | `train.py` (only prints them) | Reserved for the fine-tuning pipeline (still TODO) |
+| `train` | `base_model`, `output_dir`, `epochs`, ... | `train.py` (default.yaml is legacy — use `train_swift.yaml`) | Fine-tuning knobs |
 
 > ⚠️ `model.temperature`, `model.max_new_tokens`, `prompt.*` and `output.dir` are **not wired
 > into the code** yet. To make them take effect you must change `evaluate.py` (and/or `build_model`).
@@ -58,6 +59,27 @@ Read by `smoke_vlm.py` via `cfg.get(...)`:
 | `model.max_new_tokens` | Answer length cap |
 | `model.enable_thinking` | Qwen3.5: `false` = direct answer, no ` thinking` block |
 | `probes` | Subset of `what_heading`, `descriptive`, `yes_no`, `count`, `how_next`, `where_target`; `null` = all |
+
+## `train_swift.yaml` fields
+
+Read by `train.py` (which calls `data/swift.py` and then the ms-swift CLI):
+
+| Group | Field | Meaning |
+| --- | --- | --- |
+| `data` | `split` | Which split to carve train/val from (`train`) |
+| `data` | `categories` | VQG categories to train on (default: the three screenshot-grounded ones) |
+| `data` | `val_fraction` | Held-out share, **grouped by `annotation_id`** (0 = no val) |
+| `data` | `max_per_category` | Cap per category — this is the EDA sampling budget |
+| `data` | `with_answer` | Adds a second Q/A turn (ask → answer) |
+| `data` | `image_root` | Remap screenshots as `<image_root>/<basename>` (moved data) |
+| `train` | `method` | `lora` \| `qlora` \| `full` (qlora = 4-bit base, needed for 9B on 24 GB) |
+| `train` | `max_pixels` | Per-image pixel budget; the main VRAM knob for full-page screenshots |
+| `train` | `swift_bin` | Path to `swift` when ms-swift lives in another env |
+| `train` | `extra_args` | Passed to `swift sft` verbatim (version drift escape hatch) |
+| `merge` | `enabled`, `output_dir` | `swift export --merge_lora` into a plain HF folder for `m2w-eval` |
+
+Anything not listed here that exists in the file maps 1:1 to a `swift sft` flag; see
+`docs/train-framework.md` for the reasoning behind the defaults.
 
 ## Creating your own config
 

@@ -140,6 +140,22 @@ These are smoke tests: fast, no data, no API calls, no GPU.
 The chart tests call `pytest.importorskip("matplotlib")`, so a checkout without the `report`
 extra still runs the suite (it just skips them).
 
+`test_treevqg.py` — the TreeVQG MVP (`treevqg/`); no dataset, no GPU, no model:
+
+| Test | Checks |
+| --- | --- |
+| `test_parse_bbox_accepts_common_encodings` | `"x,y,w,h"`, JSON list, space-separated |
+| `test_parse_html_builds_a_readable_tree` | tag/role/label/depth, `<script>` content skipped |
+| `test_tree_roundtrip_preserves_structure` | `to_dict()` -> `from_dict()` keeps the tree |
+| `test_pruning_keeps_the_anchor_path` | the level anchor survives `--max-tree-nodes` |
+| `test_tree_stats_and_region` | tree summary + 3×3 region labels |
+| `test_target_and_three_anchors` | L1 = recorded target, L2 = form container, L3 = root |
+| `test_anchor_selection_survives_a_short_tree` | bands rescale instead of returning nothing |
+| `test_build_input_marks_the_anchor` | the prompt marks `*` and includes task/history |
+| `test_build_rows_for_action_emits_three_levels` | one action -> L1/L2/L3 rows with answers |
+| `test_build_rows_skips_when_html_is_missing` | missing HTML is counted, not crashed |
+| `test_metrics_group_treevqg_levels` | `meta.category` -> per-level metrics, BLEU-4 present |
+
 `test_model_download.py` — the weights-download helpers (`models/download.py`):
 
 | Test | Checks |
@@ -148,6 +164,26 @@ extra still runs the suite (it just skips them).
 | `test_target_dir_uses_namespace_repo_name` | `<cache>/<ns>_<repo>` layout |
 | `test_hint_when_env_is_unset` | warns when weights would land in the repo |
 | `test_no_hint_when_env_is_set` | no warning when `MIND2WEB_HF_CACHE` is set |
+
+`test_swift.py` — the ms-swift export and the training launcher (`data/swift.py`, `train.py`);
+no GPU, no ms-swift installed:
+
+| Test | Checks |
+| --- | --- |
+| `test_to_swift_example_shape` | `messages` roles, `<image>` prefix, absolute image path |
+| `test_with_answer_adds_a_second_turn` / `..._keeps_one_turn_when_answer_missing` | optional ask→answer exchange |
+| `test_image_path_is_resolved_against_the_jsonl` / `test_image_root_remaps_by_basename` | relative paths + moved data |
+| `test_filter_missing_images_keeps_only_existing` | broken screenshot paths are dropped |
+| `test_group_key_prefers_the_task` | `annotation_id` -> task id -> row id |
+| `test_split_is_grouped_by_task` / `test_split_is_deterministic` | no task straddles train/val, same seed = same split |
+| `test_single_group_has_no_validation_split` / `test_val_fraction_zero_...` | degenerate cases |
+| `test_sample_per_category_caps_and_is_deterministic` | the EDA sampling budget |
+| `test_prepare_split_writes_swift_files` | `train.jsonl` + `val.jsonl` + `stats.json` end to end |
+| `test_prepare_split_drops_and_counts_missing_images` | drops, counts, and reports |
+| `test_build_sft_command_*` | LoRA / QLoRA / full flags, `--extra-args` last, bad method |
+| `test_build_export_command_merges` | `swift export --merge_lora true` |
+| `test_format_command_quotes_spaces` | copy-pasteable command |
+| `test_find_last_checkpoint_*` | highest `checkpoint-N`, empty run |
 
 ## What's worth adding
 

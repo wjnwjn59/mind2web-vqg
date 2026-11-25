@@ -200,6 +200,8 @@ KEPT_ATTRS: tuple[str, ...] = (
     "bounding_box_rect",
     "data-bbox",
     "bbox",
+    # Mind2Web joins a DOM node to its candidate metadata (bbox, target flag) by this id.
+    "backend_node_id",
 )
 
 

@@ -39,7 +39,12 @@ from mind2web_vqg.paths import PROCESSED_DIR
 from mind2web_vqg.treevqg import LEVEL_NAMES, LEVELS
 from mind2web_vqg.treevqg import io as tree_io
 from mind2web_vqg.treevqg.levels import select_anchors, target_node
-from mind2web_vqg.treevqg.parse import parse_html, tree_stats
+from mind2web_vqg.treevqg.parse import (
+    apply_candidate_metadata,
+    parse_html,
+    target_from_candidates,
+    tree_stats,
+)
 from mind2web_vqg.treevqg.templates import LevelContext, build_input, question_for_level
 
 #: ``--html`` -> the action field it reads.
@@ -114,21 +119,39 @@ def build_rows_for_action(
     if len(tree) <= 1:  # only the synthetic document root: no usable HTML
         return [], ["no_html"]
 
+    # ``backend_node_id`` is the reliable join between the pruned DOM and the candidate
+    # metadata. Use it for the exact target first, then fall back to tag+text matching;
+    # attach candidate boxes so region questions are not limited to the few nodes whose
+    # HTML happened to carry a bbox attribute.
+    apply_candidate_metadata(tree, action)
     instance = instance or {}
-    history = list(source.get("action_history") or instance.get("action_reprs") or [])
-    target = target_node(
-        tree,
-        tag=source.get("target_tag"),
-        text=source.get("target_text"),
-        action_repr=source.get("target_action") or instance.get("target_action_reprs"),
+    # ``[]`` is meaningful (the first action has no completed steps). Only fall back to
+    # the raw trajectory when the exported field is genuinely absent; an ``or`` here
+    # would re-introduce every future action for the first step.
+    exported_history = source.get("action_history")
+    history = list(
+        exported_history
+        if exported_history is not None
+        else (instance.get("action_reprs") or [])
     )
+    target = target_from_candidates(tree, action)
+    if target is None:
+        target = target_node(
+            tree,
+            tag=source.get("target_tag"),
+            text=source.get("target_text"),
+            action_repr=source.get("target_action") or instance.get("target_action_reprs"),
+        )
     context = LevelContext(
         task=str(source.get("task") or instance.get("confirmed_task") or ""),
         action_history=[str(step) for step in history],
         target_action=str(source.get("target_action") or ""),
         op=str(source.get("op") or ""),
         value=str(source.get("value") or ""),
-        image_size=list(source.get("image_size") or source.get("source_size") or []) or None,
+        # DOM boxes are in the *raw* screenshot coordinate space; the exported JPEG may be
+        # downscaled. Region answers therefore use ``source_size`` first, else the box
+        # would be mapped against a smaller canvas and land in the wrong cell.
+        image_size=list(source.get("source_size") or source.get("image_size") or []) or None,
     )
     anchors = select_anchors(tree, target=target, levels=requested)
     stats = tree_stats(tree)

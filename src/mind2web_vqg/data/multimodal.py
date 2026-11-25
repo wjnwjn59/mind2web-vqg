@@ -61,6 +61,11 @@ def parquet_files(split: str, root: str | Path | None = None) -> list[Path]:
     return files
 
 
+def normalize_limit(limit: int | None) -> int | None:
+    """``0`` (or negative) means "no limit", matching the ``m2w-eda --limit 0`` convention."""
+    return None if limit is not None and limit <= 0 else limit
+
+
 def as_json(value: Any, default: Any = None) -> Any:
     """The dataset stores nested fields as JSON *strings*; decode them tolerantly."""
     if value is None:
@@ -104,6 +109,24 @@ def image_name(split: str, annotation_id: str, action_index: int) -> str:
     return f"{split}_{safe}_{int(action_index):02d}.jpg"
 
 
+def step_index(row: dict[str, Any], action_reprs: list[Any]) -> int:
+    """0-based position of this action inside the task's ``action_reprs``.
+
+    ``target_action_index`` is shipped by the dataset. Falling back to a text match is
+    only a safety net: if the index is unknown we return 0, because putting *future*
+    actions into the prompt would leak the rest of the trajectory.
+    """
+    for raw in (row.get("target_action_index"), row.get("row_index")):
+        try:
+            return max(0, int(raw))
+        except (TypeError, ValueError):
+            continue
+    target = row.get("target_action_reprs")
+    if target in action_reprs:
+        return action_reprs.index(target)
+    return 0
+
+
 def from_row(row: dict[str, Any], *, index: int, split: str) -> dict[str, Any]:
     """Convert one parquet row into a plain example dict (no image decoding)."""
     annotation_id = str(row.get("annotation_id") or "unknown")
@@ -111,6 +134,10 @@ def from_row(row: dict[str, Any], *, index: int, split: str) -> dict[str, Any]:
     target = target_element(row.get("pos_candidates") or [])
     attrs = as_json(target.get("attributes"), {}) or {}
     action_reprs = list(row.get("action_reprs") or [])
+    # ``action_history`` is *completed* steps, so it stops before the current action.
+    # The previous version stored the whole trajectory, which leaked future actions into
+    # every prompt and made the L3 "how many steps" answer constant per task.
+    completed = action_reprs[: step_index(row, action_reprs)]
 
     return {
         "id": f"{annotation_id}:{index}",
@@ -123,7 +150,7 @@ def from_row(row: dict[str, Any], *, index: int, split: str) -> dict[str, Any]:
         "website": row.get("website"),
         "domain": row.get("domain"),
         "subdomain": row.get("subdomain"),
-        "action_history": action_reprs,
+        "action_history": completed,
         "target_action": row.get("target_action_reprs") or "",
         "op": operation.get("op"),
         "value": operation.get("value") or "",
@@ -178,6 +205,13 @@ def decode_image(value: Any) -> Any:
     """
     from PIL import Image
 
+    # Full-page screenshots can exceed PIL's decompression-bomb threshold (89M px) while
+    # still being legitimate Mind2Web captures (a long product list easily reaches it).
+    # The images come from a trusted dataset, so the guard is lifted here, not globally.
+    Image.MAX_IMAGE_PIXELS = None
+
+    if value is None:
+        raise ValueError("screenshot column is None")
     if hasattr(value, "resize") and hasattr(value, "convert"):  # already a PIL image
         return value
     if isinstance(value, dict):
@@ -228,32 +262,72 @@ def export_samples(
     quality: int = 82,
     force: bool = False,
 ) -> list[dict[str, Any]]:
-    """Export ``limit`` rows of ``split`` as JPEGs + ``examples.jsonl``."""
+    """Export ``limit`` rows of ``split`` as JPEGs + ``examples.jsonl``.
+
+    ``limit=0`` means "the whole split" (the convention used by ``m2w-eda``).
+    """
+    limit = normalize_limit(limit)
     out_dir = Path(dest) if dest else PROCESSED_DIR / "multimodal" / split
     images_dir = out_dir / "images"
     images_dir.mkdir(parents=True, exist_ok=True)
 
+    # Image sizes must survive a resumed export (``--force`` is expensive), and the raw
+    # size cannot be recovered from the downscaled JPEG. A tiny sidecar keeps both.
+    meta_path = out_dir / "image_meta.json"
+    image_meta: dict[str, dict[str, list[int]]] = {}
+    if meta_path.is_file():
+        try:
+            image_meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            image_meta = {}
+
     examples: list[dict[str, Any]] = []
+    skipped = 0
     for index, row in enumerate(iter_rows(split, root=root, limit=limit)):
         example = from_row(row, index=index, split=split)
         path = images_dir / example["image_name"]
 
         if force or not path.exists():
-            image = decode_image(row["screenshot"]).convert("RGB")
+            try:
+                image = decode_image(row["screenshot"]).convert("RGB")
+            except (ValueError, OSError, TypeError):
+                # A single broken/absent screenshot must not abort a multi-thousand-row
+                # split. Drop the row here, where it is cheap, and report the count.
+                skipped += 1
+                continue
             # ``source_size`` is the raw screenshot size; keep it so downstream tasks can
             # map DOM coordinates (``target_bbox``) onto the (possibly downscaled) JPEG.
             example["source_size"] = [image.width, image.height]
             image = fit_width(image, max_width)
             image.save(path, format="JPEG", quality=quality, optimize=True)
             example["image_size"] = [image.width, image.height]
+            image_meta[example["image_name"]] = {
+                "source_size": example["source_size"],
+                "image_size": example["image_size"],
+            }
+        elif example["image_name"] in image_meta:
+            example.update(image_meta[example["image_name"]])
+        else:
+            # Older exports have no sidecar: recover the JPEG size; treat it as the
+            # source size so region questions still use a consistent coordinate space.
+            from PIL import Image
+
+            with Image.open(path) as saved:
+                example["image_size"] = [saved.width, saved.height]
+            example["source_size"] = example["image_size"]
 
         example["image"] = str(path)
         examples.append(example)
+
+    if image_meta:
+        meta_path.write_text(json.dumps(image_meta, indent=0), encoding="utf-8")
 
     with open(out_dir / "examples.jsonl", "w", encoding="utf-8") as f:
         for example in examples:
             f.write(json.dumps(example, ensure_ascii=False) + "\n")
 
+    if skipped:
+        print(f"[mm] skipped {skipped} row(s) with a missing/undecodable screenshot")
     print(f"[mm] {len(examples)} example(s) -> {out_dir}")
     return examples
 
@@ -264,7 +338,9 @@ def main(argv: list[str] | None = None) -> int:
         description="Export Multimodal-Mind2Web screenshots + metadata to disk."
     )
     parser.add_argument("--split", default="test_task", choices=SPLITS)
-    parser.add_argument("--limit", type=int, default=5, help="number of rows (default 5)")
+    parser.add_argument(
+        "--limit", type=int, default=5, help="number of rows (default 5; 0 = the whole split)"
+    )
     parser.add_argument(
         "--dest", type=Path, default=None, help="default: data/processed/multimodal/<split>"
     )

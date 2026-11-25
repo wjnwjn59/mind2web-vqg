@@ -1,5 +1,6 @@
 """Tests for the Multimodal-Mind2Web helpers (no parquet, no network, no images)."""
 
+import io
 import json
 
 from mind2web_vqg.data.multimodal import (
@@ -7,7 +8,9 @@ from mind2web_vqg.data.multimodal import (
     clean_task,
     from_row,
     image_name,
+    normalize_limit,
     parse_bbox,
+    step_index,
     target_element,
 )
 from mind2web_vqg.smoke_vlm import PROBES, build_prompt
@@ -18,6 +21,14 @@ def test_as_json_handles_strings_and_passthrough() -> None:
     assert as_json('{"op": "CLICK"}') == {"op": "CLICK"}
     assert as_json({"already": "parsed"}) == {"already": "parsed"}
     assert as_json("not json", default=[]) == []
+
+
+def test_normalize_limit_treats_zero_as_all() -> None:
+    # `m2w-mm-export --limit 0` must mean "the whole split", like `m2w-eda --limit 0`.
+    assert normalize_limit(0) is None
+    assert normalize_limit(-3) is None
+    assert normalize_limit(None) is None
+    assert normalize_limit(5) == 5
 
 
 def test_parse_bbox() -> None:
@@ -80,7 +91,51 @@ def test_from_row_parses_the_real_schema() -> None:
     assert example["target_tag"] == "button"
     assert example["target_text"] == "Search"
     assert example["target_bbox"] == [10.0, 20.0, 30.0, 40.0]
-    assert example["action_history"] == ["CLICK [Hotels]", "CLICK [Search]"]
+    # Steps *before* the current action: the current one is the target, and future
+    # actions must never leak into the prompt.
+    assert example["action_history"] == ["CLICK [Hotels]"]
+
+
+def test_step_index_prefers_the_dataset_index() -> None:
+    reprs = ["CLICK [A]", "CLICK [B]", "CLICK [B]"]
+    assert step_index({"target_action_index": "2", "target_action_reprs": "CLICK [B]"}, reprs) == 2
+    # No index: fall back to the first textual match.
+    assert step_index({"target_action_reprs": "CLICK [B]"}, reprs) == 1
+    # Nothing matches: assume the first step rather than leaking the whole trajectory.
+    assert step_index({"target_action_reprs": "missing"}, reprs) == 0
+
+
+def test_export_samples_skips_missing_screenshots(tmp_path, monkeypatch) -> None:
+    from PIL import Image
+
+    import mind2web_vqg.data.multimodal as mm
+
+    buffer = io.BytesIO()
+    Image.new("RGB", (4, 2), "white").save(buffer, format="PNG")
+
+    row = {
+        "annotation_id": "abc-123",
+        "action_uid": "uid-1",
+        "confirmed_task": "Find a hotel in Rome",
+        "action_reprs": ["CLICK [Search]"],
+        "target_action_reprs": "CLICK [Search]",
+        "operation": json.dumps({"op": "CLICK", "value": ""}),
+        "pos_candidates": [],
+    }
+    monkeypatch.setattr(
+        mm, "iter_rows", lambda *args, **kwargs: iter([{**row, "screenshot": None}])
+    )
+    examples = mm.export_samples("test_task", limit=1, dest=tmp_path, max_width=4)
+    assert examples == []
+
+    monkeypatch.setattr(
+        mm,
+        "iter_rows",
+        lambda *args, **kwargs: iter([{**row, "screenshot": buffer.getvalue()}]),
+    )
+    examples = mm.export_samples("test_task", limit=1, dest=tmp_path, max_width=4)
+    assert len(examples) == 1
+    assert examples[0]["image_size"] == [4, 2]
 
 
 def test_image_name_is_filesystem_safe() -> None:

@@ -157,6 +157,21 @@ uv run m2w-build-vqg --split test_task --categories target_label target_region
 uv run m2w-build-vqg --split test_task --categories field_value
 ```
 
+### From VQG examples to a training file
+
+`m2w-swift-data` converts the neutral `{input, target, answer, image}` rows into the format
+ms-swift reads (`messages` + `images`), and carves a validation split **by task** so no page
+state is shared between train and val:
+
+```bash
+uv run m2w-swift-data --split train --val-fraction 0.05
+# -> data/processed/vqg/train/swift/{train.jsonl,val.jsonl,stats.json}
+```
+
+`stats.json` holds the per-category counts, the task count and how many screenshots were
+dropped because the file was missing. `--image-root` remaps the screenshots when the JSONL
+was produced on another machine. Usage: see `docs/train-framework.md`.
+
 ### Check what the HTML render looks like (optional, once per machine)
 
 ```bash
@@ -178,6 +193,8 @@ Two chains exist: the **screenshot chain** (the real VQG task) and the original 
 # screenshots (the VQG input)
 Multimodal-Mind2Web parquet --(data/multimodal.py)--> JPEGs + examples.jsonl
                             --(data/vqg.py)--------> [{input, target, answer, image, ...}]
+                                                             |
+                              (data/swift.py) -> train.jsonl / val.jsonl (ms-swift)
                                                              |
                                                   evaluate.py / train.py
 

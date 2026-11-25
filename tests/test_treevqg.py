@@ -2,13 +2,21 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from mind2web_vqg.metrics import compute_metrics
 from mind2web_vqg.treevqg import io as tree_io
+from mind2web_vqg.treevqg.audit import audit_rows, skeleton
 from mind2web_vqg.treevqg.build import build_rows_for_action
 from mind2web_vqg.treevqg.levels import select_anchors, target_node
-from mind2web_vqg.treevqg.parse import parse_bbox, parse_html, tree_stats
+from mind2web_vqg.treevqg.parse import (
+    apply_candidate_metadata,
+    parse_bbox,
+    parse_html,
+    target_from_candidates,
+    tree_stats,
+)
 from mind2web_vqg.treevqg.schema import UiTree
 from mind2web_vqg.treevqg.templates import LevelContext, build_input, region_label
 
@@ -178,6 +186,19 @@ def test_build_rows_for_action_emits_three_levels() -> None:
     assert rows[2]["answer"] == "1"  # one completed step
 
 
+def test_empty_history_is_not_replaced_by_the_full_trajectory() -> None:
+    # The first action has no completed steps. Falling back to ``instance["action_reprs"]``
+    # here would leak every future action into the prompt and make L3 count the whole task.
+    rows, _ = build_rows_for_action(
+        source_row(action_history=[]),
+        action(),
+        instance={"action_reprs": ["CLICK [Flights]", "CLICK [Search flights]"]},
+        split="test_task",
+    )
+    l3 = next(row for row in rows if row["level"] == "L3")
+    assert "Steps already completed: none" in l3["input"]
+
+
 def test_build_rows_skips_when_html_is_missing() -> None:
     rows, skipped = build_rows_for_action(source_row(), {"action_uid": "uid1"}, split="test_task")
     assert rows == []
@@ -208,6 +229,59 @@ def test_build_split_end_to_end(tmp_path: Any, monkeypatch: Any) -> None:
     assert stats["by_level"] == {"L1": 1, "L2": 1, "L3": 1}
     rows = tree_io.read_jsonl(result["examples"])
     assert [row["level"] for row in rows] == ["L1", "L2", "L3"]
+
+
+def test_candidate_metadata_recovers_bbox_and_exact_target() -> None:
+    html = """
+    <html><body><div>
+      <button backend_node_id="7">Search</button>
+      <button backend_node_id="8">Search</button>
+    </div></body></html>
+    """
+    tree = parse_html(html)
+    action = {
+        "pos_candidates": [
+            {
+                "tag": "button",
+                "backend_node_id": "8",
+                "is_original_target": True,
+                "attributes": json.dumps(
+                    {"backend_node_id": "8", "bounding_box_rect": "10,20,30,40"}
+                ),
+            }
+        ],
+        "neg_candidates": [],
+    }
+
+    assert apply_candidate_metadata(tree, action) == 1
+    target = target_from_candidates(tree, action)
+    assert target is not None
+    assert tree.node(target).attrs["backend_node_id"] == "8"
+    assert tree.node(target).bbox == [10.0, 20.0, 30.0, 40.0]
+
+
+def test_audit_flags_answer_leak_and_level_balance() -> None:
+    rows, _ = build_rows_for_action(source_row(), action(), split="test_task")
+    audit = audit_rows(rows)
+    assert audit["totals"]["examples"] == 3
+    assert set(audit["by_level"]) == {"L1", "L2", "L3"}
+    # The prompt contains the tree outline, so the L1 answer is copied from it.
+    assert audit["by_level"]["L1"]["answer_in_input_rate"] == 1.0
+    assert any("leaks" in warning for warning in audit["warnings"])
+
+
+def test_skeleton_hides_task_and_answer() -> None:
+    left = skeleton(
+        'In the "Flight Search" form, which button should the user use for "Book a flight"?',
+        task="Book a flight",
+        answer="Search flights",
+    )
+    right = skeleton(
+        'In the "Payment" form, which button should the user use for "Buy a coffee"?',
+        task="Buy a coffee",
+        answer="Pay now",
+    )
+    assert left == right
 
 
 def test_metrics_group_treevqg_levels() -> None:

@@ -1,0 +1,70 @@
+# Training run for the VQG model: ms-swift LoRA on Qwen3.5 (see docs/train-framework.md).
+#
+#   uv run m2w-train --config configs/train_swift.yaml --dry-run   # data + commands only
+#   uv run m2w-train --config configs/train_swift.yaml             # train + merge
+#
+# The trainer runs as a subprocess, so ms-swift lives in its own env (it pins its own
+# torch/transformers). Point `train.swift_bin` at that env's executable, or activate it.
+
+data:
+  # Carve train/val out of the train split. test_task / test_website / test_domain stay
+  # untouched for evaluation.
+  split: train
+  categories: [target_label, element_type, target_region]   # the screenshot-grounded three
+  # `field_value` is answered from the task text, not the screen: leave it out of SFT, or
+  # add it deliberately with a second run to compare.
+
+  with_task: true            # include "The user's task is: ..." in the prompt
+  with_answer: false         # true = a second Q/A turn (teaches the model to answer too)
+  val_fraction: 0.05         # grouped by annotation_id, so no page state leaks across splits
+  max_per_category: null     # null = everything; set it to the EDA sampling budget
+  image_root: null           # remap screenshots as <image_root>/<basename> (moved data)
+  vqg_examples: null         # override the VQG examples.jsonl path
+  swift_dir: null            # override the output dir (default .../vqg/<split>/swift)
+  limit: null                # only used when the VQG file has to be built from scratch
+  seed: 42
+
+train:
+  swift_bin: swift           # e.g. .venv-swift/bin/swift
+  base_model: Qwen/Qwen3.5-9B   # resolved from $MIND2WEB_HF_CACHE when downloaded
+  output_dir: outputs/train/qwen35_9b_vqg
+
+  method: qlora              # lora | qlora | full  (qlora = 4-bit weights, needed for 9B)
+  epochs: 2
+  batch_size: 1              # one screenshot per step; the image tokens dominate
+  grad_accum: 16
+  lr: 1.0e-4
+  lora_rank: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  target_modules: all-linear
+
+  max_length: 4096           # text + image tokens together
+  max_pixels: 1003520        # ~1M px per screenshot; lower it when the card runs out
+  dtype: bfloat16
+  gradient_checkpointing: true
+  packing: false             # true = faster, but mixes samples into one sequence
+
+  quant_method: bnb          # swift 3.x calls this --quantization_bit 4 (see docs)
+  quant_bits: 4
+  deepspeed: null            # e.g. zero2 once you have more than one GPU
+  report_to: none            # none | wandb | tensorboard
+
+  save_steps: 200
+  eval_steps: 200
+  save_total_limit: 2
+  logging_steps: 5
+  warmup_ratio: 0.03
+  num_workers: 4             # Windows: use 0 (ms-swift raises with workers > 0 there)
+  seed: 42
+  resume_from_checkpoint: null
+  use_hf: true               # resolve the base model from HuggingFace, not ModelScope
+  extra_args: []             # anything `swift sft` gained before this wrapper did
+
+merge:
+  enabled: true              # merge the LoRA adapter into a normal HF folder
+  output_dir: outputs/models/qwen35-9b-vqg
+  extra_args: []
+
+run:
+  eval_config: configs/default.yaml   # `--eval` evaluates with this config's data.splits
