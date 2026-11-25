@@ -185,6 +185,45 @@ no GPU, no ms-swift installed:
 | `test_format_command_quotes_spaces` | copy-pasteable command |
 | `test_find_last_checkpoint_*` | highest `checkpoint-N`, empty run |
 
+`test_bench.py` — Bench v1 question types (`treevqg/bench.py`); hand-written HTML only:
+
+| Test | Checks |
+| --- | --- |
+| `test_container_membership_names_the_card` | the answer is the surrounding card, not a screen string |
+| `test_sibling_disambiguation_*` | picks the distinguishing card; needs 2+ candidates |
+| `test_absence_is_balanced_and_named` | yes/no rows come from a sibling section that lacks the control |
+| `test_consequence_*` | next state from `t+1`; transaction needs new text; non-CLICK ignored |
+| `test_target_label_and_region` | the two legacy control types still work |
+| `test_make_row_exposes_two_views_and_leak_flags` | `condition` (tree) vs `input` (no tree), leak flags set |
+| `test_stratified_sample_respects_website_cap_then_relaxes` | one website cannot fill a type |
+
+`test_bench_eval.py` — the bench model runner + scores (`treevqg/bench_eval.py`); fake backend:
+
+| Test | Checks |
+| --- | --- |
+| `test_condition_body_*` / `test_build_prompt_*` | type instruction replaces the preamble, gold question never leaks |
+| `test_normalize_and_tokens_*` | accents folded, `top–left` == `top left` |
+| `test_token_f1_bounds` / `test_rouge_l_*` | identical = 1.0, disjoint = 0.0, partial in between |
+| `test_answer_mentioned_matches_words_not_substrings` | `No` does not match `north`; hyphens ignored |
+| `test_select_rows_filters_and_caps_per_type` | types / per-type / total caps |
+| `test_score_predictions_*` | per-type, `tree=yes` vs `tree=no`, missing + non-question warnings |
+| `test_generate_writes_one_line_per_row_and_resumes` | append + flush, resume skips ids, `--no-resume` redoes |
+| `test_generate_falls_back_to_text_when_the_screenshot_is_gone` | stale image path -> text-only row |
+| `test_run_eval_*` | dry run loads no model; metrics + report written; missing bench is explained |
+| `test_resolve_model_name_defaults_to_vlm` | bare repo id -> `vlm/...` |
+
+`test_clarify.py` — H2 clarification rows, audit and metrics (`treevqg/clarify*.py`):
+
+| Test | Checks |
+| --- | --- |
+| `test_container_ambiguity_is_l2_...` / `test_same_label_different_roles_is_l1` | level + question wording per ambiguity |
+| `test_indistinguishable_duplicates_are_skipped_not_negatives` | truly identical controls are dropped, not turned into `NO_QUESTION` |
+| `test_unique_target_is_a_no_question_negative` | unique target -> negative row |
+| `test_irreversible_action_adds_a_safety_row` | safety question for destructive actions |
+| `test_humanize_action_reads_type_and_select` | action repr -> readable phrase |
+| `test_audit_*` | option coverage, broken answer index, positive that says "do not ask" |
+| `test_metrics_*` / `test_ask_prf_and_option_recall_helpers` | Ask-F1, info gain, missing predictions |
+
 ## What's worth adding
 
 - `load_split` against a fake directory (pytest `tmp_path`) with sample JSON → verify file

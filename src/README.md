@@ -28,6 +28,13 @@ immediately — no reinstall needed.
 | `m2w-build-vqg` | `data/vqg.py:main` | ✅ works (`examples.jsonl` -> VQG examples) |
 | `m2w-build-treevqg` | `treevqg/build.py:main` | ✅ works (HTML + screenshots -> 3-level TreeVQG JSONL) |
 | `m2w-eval-treevqg` | `treevqg/evaluate.py:main` | ✅ works (TreeVQG JSONL -> predictions + per-level metrics) |
+| `m2w-audit-treevqg` | `treevqg/audit.py:main` | ✅ works (leakage / template collapse / level balance -> `audit.md`) |
+| `m2w-build-clarify` | `treevqg/clarify.py:main` | ✅ works (H2 clarification questions -> JSONL + stats) |
+| `m2w-audit-clarify` | `treevqg/clarify_audit.py:main` | ✅ works (option coverage / referent visibility -> `audit.md`) |
+| `m2w-eval-clarify` | `treevqg/clarify_metrics.py:main` | ✅ works (Ask-F1 + information gain from a predictions file) |
+| `m2w-build-bench` | `treevqg/bench.py:main` | ✅ works (6 question types, stratified by website -> JSONL + stats) |
+| `m2w-eval-bench` | `treevqg/bench_eval.py:main` | ✅ works (local model generates bench questions -> predictions + metrics + report) |
+| `m2w-visualize-bench` | `treevqg/visualize.py:main` | ✅ works (crop + box + Q/A gallery as HTML) |
 | `m2w-swift-data` | `data/swift.py:main` | ✅ works (VQG -> ms-swift JSONL + train/val split) |
 | `m2w-render-html` | `data/render_html.py:main` | ✅ works (Playwright sanity check) |
 | `m2w-vlm-smoke` | `smoke_vlm.py:main` | ✅ works (screenshot -> VLM, 6 probes) |

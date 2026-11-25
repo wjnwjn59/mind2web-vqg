@@ -373,6 +373,16 @@ uv run m2w-audit-clarify --split test_task
 # -> outputs/clarify_audit/test_task/{audit.json,audit.md}
 uv run m2w-eval-clarify --split test_task --predictions preds.jsonl
 # -> outputs/clarify_eval/test_task/{eval.json,eval.md}
+
+# Bench v1: 6 question types you can score, plus a runner for a local model.
+uv run m2w-build-bench --split test_task --per-type 20
+# -> data/processed/bench/v1/test_task/{examples.jsonl,stats.json}
+uv run m2w-visualize-bench --examples data/processed/bench/v1/test_task/examples.jsonl
+# -> outputs/bench_v1_demo/{gallery.html,summary.md,images/}
+uv run m2w-download-model Qwen/Qwen2.5-VL-7B-Instruct
+uv run m2w-eval-bench --split test_task --per-type 5 --with-image \
+  --model vlm/Qwen/Qwen2.5-VL-7B-Instruct
+# -> outputs/bench_eval/test_task/<model>/{predictions.jsonl,metrics.json,report.md}
 ```
 
 Each row carries the parsed UI tree (`tree.nodes[*]` with parent/depth/role/label/bbox) plus
